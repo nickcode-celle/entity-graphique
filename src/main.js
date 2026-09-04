@@ -22,18 +22,18 @@ const params = {
   turnRate: 1.75,
   frameX: 3.25,
   frameY: 1.95,
-  trailSpacing: 0.90,
+  trailSpacing: 7.5,
   cohesion: 0.18,
   separation: 0.085,
   separationDistance: 0.31,
   lateralFreedom: 0.34,
-  bodyWidth: 0.95,
+  bodyWidth: 1.15,
   bodyHeight: 0.70,
   antiStraggle: 0.55,
   depth: 0.48,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V12.2' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V12.3' })
 gui.add(params, 'speed', 0.015, 0.05, 0.001).name('Vitesse tête')
 gui.add(params, 'minSpeed', 0.012, 0.04, 0.001).name('Vitesse mini')
 gui.add(params, 'maxSpeed', 0.025, 0.06, 0.001).name('Vitesse maxi')
@@ -41,11 +41,11 @@ gui.add(params, 'catchup', 0.05, 0.9, 0.01).name('Rattrapage')
 gui.add(params, 'turnRate', 0.5, 3.0, 0.05).name('Fluidité virage')
 gui.add(params, 'frameX', 2.4, 4.0, 0.05).name('Cadre horizontal')
 gui.add(params, 'frameY', 1.4, 2.6, 0.05).name('Cadre vertical')
-gui.add(params, 'trailSpacing', 0.5, 1.8, 0.05).name('Retard trajectoire')
+gui.add(params, 'trailSpacing', 3.0, 12.0, 0.25).name('Écart longitudinal')
 gui.add(params, 'cohesion', 0.04, 0.35, 0.005).name('Cohésion parcours')
 gui.add(params, 'separation', 0, 0.18, 0.002).name('Séparation')
 gui.add(params, 'lateralFreedom', 0.08, 0.55, 0.01).name('Liberté latérale')
-gui.add(params, 'bodyWidth', 0.55, 1.5, 0.02).name('Largeur corps')
+gui.add(params, 'bodyWidth', 0.55, 1.8, 0.02).name('Largeur corps')
 gui.add(params, 'bodyHeight', 0.35, 1.2, 0.02).name('Hauteur corps')
 gui.add(params, 'antiStraggle', 0.1, 1.0, 0.02).name('Anti-décrochage')
 gui.add(params, 'depth', 0.10, 0.9, 0.02).name('Profondeur')
@@ -68,9 +68,9 @@ const trail = []
 
 const leaderHeading = new THREE.Vector3(1, 0.06, 0).normalize()
 const leaderDesired = leaderHeading.clone()
-const leaderStart = new THREE.Vector3(-1.55, 0, 0)
+const leaderStart = new THREE.Vector3(-0.8, 0, 0)
 
-for (let i = 0; i < 420; i++) {
+for (let i = 0; i < 520; i++) {
   trail.push({
     position: leaderStart.clone().addScaledVector(leaderHeading, -i * params.speed),
     heading: leaderHeading.clone(),
@@ -85,15 +85,16 @@ for (let i = 0; i < 100; i++) {
   })
   const mesh = new THREE.Mesh(geometry, material)
 
-  const rank = i === 0 ? 0 : 8 + Math.floor((i - 1) / 8) * params.trailSpacing
+  const row = i === 0 ? 0 : Math.floor((i - 1) / 8)
+  const rank = i === 0 ? 0 : 8 + row * params.trailSpacing
   const sampleIndex = THREE.MathUtils.clamp(Math.floor(rank), 0, trail.length - 1)
   const sample = trail[sampleIndex]
   const lane = i === 0 ? 0 : ((i - 1) % 8) - 3.5
-  const band = i === 0 ? 0 : Math.floor((i - 1) / 8) % 3 - 1
+  const band = i === 0 ? 0 : row % 3 - 1
   const side = new THREE.Vector3(-sample.heading.y, sample.heading.x, 0).normalize()
 
   mesh.position.copy(sample.position)
-  mesh.position.addScaledVector(side, lane * 0.16 + (Math.random() - 0.5) * 0.05)
+  mesh.position.addScaledVector(side, (lane / 3.5) * params.bodyWidth + (Math.random() - 0.5) * 0.05)
   mesh.position.z = band * 0.09 + (Math.random() - 0.5) * params.depth * 0.22
 
   marbles.push({
@@ -131,16 +132,16 @@ function rotatePlanar(v, angle) {
 
 function chooseLeaderDirection() {
   const p = leader.mesh.position
-  const nearRight = p.x > params.frameX * 0.62
-  const nearLeft = p.x < -params.frameX * 0.62
-  const nearTop = p.y > params.frameY * 0.60
-  const nearBottom = p.y < -params.frameY * 0.60
+  const nearRight = p.x > params.frameX * 0.58
+  const nearLeft = p.x < -params.frameX * 0.58
+  const nearTop = p.y > params.frameY * 0.56
+  const nearBottom = p.y < -params.frameY * 0.56
 
   if (nearRight || nearLeft || nearTop || nearBottom) {
     inward.set(-p.x, -p.y, 0)
     if (inward.lengthSq() > 0.0001) {
       inward.normalize()
-      leaderDesired.lerp(inward, 0.34).normalize()
+      leaderDesired.lerp(inward, 0.38).normalize()
     }
     return
   }
@@ -152,7 +153,7 @@ function chooseLeaderDirection() {
 
 function pushTrail() {
   trail.unshift({ position: leader.mesh.position.clone(), heading: leader.heading.clone() })
-  if (trail.length > 700) trail.pop()
+  if (trail.length > 900) trail.pop()
 }
 
 function trailSample(offset) {
