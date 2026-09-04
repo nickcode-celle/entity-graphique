@@ -35,7 +35,7 @@ void main(){
 
 const velocityShader = `
 uniform float time; uniform float testing; uniform float delta;
-uniform float separationDistance; uniform float alignmentDistance; uniform float cohesionDistance; uniform float freedomFactor; uniform vec3 predator;
+uniform float separationDistance; uniform float alignmentDistance; uniform float cohesionDistance; uniform float freedomFactor; uniform float centralPull; uniform vec3 predator;
 const float width=resolution.x; const float height=resolution.y; const float PI=3.141592653589793; const float PI_2=PI*2.0;
 float zoneRadius=40.0; float zoneRadiusSquared=1600.0; float separationThresh=.45; float alignmentThresh=.65;
 const float UPPER_BOUNDS=BOUNDS; const float LOWER_BOUNDS=-UPPER_BOUNDS; const float SPEED_LIMIT=9.0;
@@ -45,7 +45,7 @@ void main(){
  float dist,distSquared,f,percent; vec3 dir; vec3 velocity=selfVelocity; float limit=SPEED_LIMIT;
  dir=predator*UPPER_BOUNDS-selfPosition; dir.z=0.; dist=length(dir); distSquared=dist*dist; float preyRadius=150.; float preyRadiusSq=preyRadius*preyRadius;
  if(dist<preyRadius){f=(distSquared/preyRadiusSq-1.0)*delta*100.; velocity+=normalize(dir)*f; limit+=5.;}
- dir=selfPosition; dist=length(dir); dir.y*=2.5; velocity-=normalize(dir)*delta*5.;
+ dir=selfPosition; dist=length(dir); dir.y*=2.5; velocity-=normalize(dir)*delta*centralPull;
  for(float y=0.;y<height;y++) for(float x=0.;x<width;x++){
    vec2 ref=vec2(x+.5,y+.5)/resolution.xy; birdPosition=texture2D(texturePosition,ref).xyz; dir=birdPosition-selfPosition; dist=length(dir); if(dist<.0001) continue;
    distSquared=dist*dist; if(distSquared>zoneRadiusSquared) continue; percent=distSquared/zoneRadiusSquared;
@@ -63,7 +63,7 @@ for(let k=0;k<dtVelocity.image.data.length;k+=4){dtVelocity.image.data[k]=(Math.
 const velocityVariable=gpuCompute.addVariable('textureVelocity',velocityShader,dtVelocity), positionVariable=gpuCompute.addVariable('texturePosition',positionShader,dtPosition)
 gpuCompute.setVariableDependencies(velocityVariable,[positionVariable,velocityVariable]);gpuCompute.setVariableDependencies(positionVariable,[positionVariable,velocityVariable])
 const pu=positionVariable.material.uniforms, vu=velocityVariable.material.uniforms
-pu.time={value:0};pu.delta={value:0};vu.time={value:1};vu.delta={value:0};vu.testing={value:1};vu.separationDistance={value:20};vu.alignmentDistance={value:20};vu.cohesionDistance={value:20};vu.freedomFactor={value:.75};vu.predator={value:new THREE.Vector3()};velocityVariable.material.defines.BOUNDS=BOUNDS.toFixed(2)
+pu.time={value:0};pu.delta={value:0};vu.time={value:1};vu.delta={value:0};vu.testing={value:1};vu.separationDistance={value:20};vu.alignmentDistance={value:20};vu.cohesionDistance={value:20};vu.freedomFactor={value:.75};vu.centralPull={value:5};vu.predator={value:new THREE.Vector3()};velocityVariable.material.defines.BOUNDS=BOUNDS.toFixed(2)
 velocityVariable.wrapS=velocityVariable.wrapT=positionVariable.wrapS=positionVariable.wrapT=THREE.RepeatWrapping
 const err=gpuCompute.init();if(err!==null)throw new Error(err)
 
@@ -75,8 +75,8 @@ scene.add(new THREE.Mesh(geo,mat))
 
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
-const controls={BOUNDS:BOUNDS_FACTOR}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()})
+const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5}
+const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
