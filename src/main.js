@@ -22,17 +22,18 @@ const params = {
   preferredDistance: 0.82,
   dangerDistance: 0.34,
   speed: 0.034,
-  turnRate: 1.15,
+  turnRate: 1.35,
   initiativeRate: 0.10,
   turnAngle: 0.78,
   gateWidth: 0.52,
   depth: 0.52,
-  groupRadius: 3.55,
-  groupTether: 0.010,
-  edgeMargin: 0.48,
+  groupRadius: 2.65,
+  groupTether: 0.012,
+  frameX: 2.65,
+  frameY: 1.85,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V11.1' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V11.2' })
 gui.add(params, 'neighbours', 3, 12, 1).name('Voisins suivis')
 gui.add(params, 'alignment', 0, 0.15, 0.001).name('Alignement')
 gui.add(params, 'attraction', 0, 0.04, 0.0005).name('Attraction locale')
@@ -42,12 +43,13 @@ gui.add(params, 'dangerDistance', 0.2, 0.7, 0.01).name('Distance sécurité')
 gui.add(params, 'speed', 0.015, 0.08, 0.001).name('Vitesse constante')
 gui.add(params, 'turnRate', 0.35, 2.5, 0.05).name('Fluidité virage')
 gui.add(params, 'initiativeRate', 0.02, 0.35, 0.01).name('Fréquence virage')
-gui.add(params, 'turnAngle', 0.25, 1.25, 0.01).name('Angle virage')
+gui.add(params, 'turnAngle', 0.25, 1.25, 0.01).name('Angle virage libre')
 gui.add(params, 'gateWidth', 0.15, 1.2, 0.01).name('Largeur zone virage')
 gui.add(params, 'depth', 0.10, 1.2, 0.02).name('Profondeur')
-gui.add(params, 'groupRadius', 2.4, 5.0, 0.05).name('Rayon cohésion')
+gui.add(params, 'groupRadius', 1.8, 4.0, 0.05).name('Rayon cohésion')
 gui.add(params, 'groupTether', 0, 0.03, 0.0005).name('Rappel groupe')
-gui.add(params, 'edgeMargin', 0.30, 0.65, 0.01).name('Cadre de vol')
+gui.add(params, 'frameX', 1.8, 4.0, 0.05).name('Cadre horizontal')
+gui.add(params, 'frameY', 1.2, 3.0, 0.05).name('Cadre vertical')
 
 scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x20242a, 1.15))
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.6)
@@ -76,14 +78,14 @@ for (let i = 0; i < 100; i++) {
   const mesh = new THREE.Mesh(geometry, material)
 
   mesh.position.set(
-    (Math.random() - 0.5) * 5.6,
-    (Math.random() - 0.5) * 2.4,
+    (Math.random() - 0.5) * 3.8,
+    (Math.random() - 0.5) * 1.9,
     (Math.random() - 0.5) * params.depth
   )
 
   const heading = new THREE.Vector3(
     1,
-    (Math.random() - 0.5) * 0.24,
+    (Math.random() - 0.5) * 0.20,
     (Math.random() - 0.5) * 0.06
   ).normalize()
 
@@ -152,26 +154,27 @@ function rotatePlanar(vector, angle) {
   ).normalize()
 }
 
-function chooseTurnDirection(leader) {
-  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z
-  const halfWidth = halfHeight * camera.aspect
-  const safeX = halfWidth * params.edgeMargin
-  const safeY = halfHeight * params.edgeMargin
-
-  const p = leader.mesh.position
-  let sign = Math.random() < 0.5 ? -1 : 1
-
-  if (p.x > safeX) sign = avgHeading.y >= 0 ? 1 : -1
-  if (p.x < -safeX) sign = avgHeading.y >= 0 ? -1 : 1
-  if (p.y > safeY) sign = avgHeading.x >= 0 ? -1 : 1
-  if (p.y < -safeY) sign = avgHeading.x >= 0 ? 1 : -1
-
-  const candidateA = rotatePlanar(avgHeading, params.turnAngle * sign)
-  const candidateB = rotatePlanar(avgHeading, -params.turnAngle * sign)
-
+function chooseFreeTurnDirection(leader) {
+  const sign = Math.random() < 0.5 ? -1 : 1
+  const a = rotatePlanar(avgHeading, params.turnAngle * sign)
+  const b = rotatePlanar(avgHeading, -params.turnAngle * sign)
   const inward = tmp.copy(leader.mesh.position).multiplyScalar(-1).setZ(0)
-  if (inward.lengthSq() > 0.0001) inward.normalize()
-  return candidateA.dot(inward) >= candidateB.dot(inward) ? candidateA : candidateB
+  if (inward.lengthSq() < 0.0001) return a
+  inward.normalize()
+  return a.dot(inward) >= b.dot(inward) ? a : b
+}
+
+function chooseEdgeTurnDirection(leader) {
+  // Au bord, le virage n'est pas un petit écart : la tête vise franchement
+  // l'intérieur du cadre. Elle continue toujours d'avancer, mais sa trajectoire
+  // se courbe progressivement vers cette nouvelle direction.
+  const inward = new THREE.Vector3(-leader.mesh.position.x, -leader.mesh.position.y, 0)
+  if (inward.lengthSq() < 0.0001) return avgHeading.clone()
+  inward.normalize()
+
+  // On garde un peu de la direction actuelle afin d'éviter un retournement visuel sec.
+  const candidate = avgHeading.clone().multiplyScalar(0.18).add(inward.multiplyScalar(0.82)).normalize()
+  return candidate
 }
 
 function startTurn(force = false) {
@@ -186,7 +189,7 @@ function startTurn(force = false) {
   }
 
   const oldHeading = avgHeading.clone()
-  const newHeading = chooseTurnDirection(leader)
+  const newHeading = force ? chooseEdgeTurnDirection(leader) : chooseFreeTurnDirection(leader)
 
   activeTurn = {
     point: leader.mesh.position.clone(),
@@ -205,15 +208,14 @@ function startTurn(force = false) {
 function maybeStartEdgeTurn() {
   if (activeTurn) return
 
-  const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z
-  const halfWidth = halfHeight * camera.aspect
-  const safeX = halfWidth * params.edgeMargin
-  const safeY = halfHeight * params.edgeMargin
   const leader = marbles[leadingMarbleIndex()]
   const p = leader.mesh.position
 
-  if (Math.abs(p.x) > safeX || Math.abs(p.y) > safeY) startTurn(true)
-  else if (simTime >= nextTurnAt) startTurn(false)
+  if (Math.abs(p.x) >= params.frameX || Math.abs(p.y) >= params.frameY) {
+    startTurn(true)
+  } else if (simTime >= nextTurnAt) {
+    startTurn(false)
+  }
 }
 
 function updateGateState(m) {
@@ -322,6 +324,7 @@ function updateSwarm(dt) {
     const turn = 1 - Math.exp(-params.turnRate * dt)
     m.heading.lerp(m.desiredHeading, turn).normalize()
 
+    // Toujours en mouvement, toujours vers l'avant, vitesse strictement positive.
     const velocity = tmp.copy(m.heading).multiplyScalar(params.speed)
 
     if (Math.abs(m.mesh.position.z) > params.depth) {
