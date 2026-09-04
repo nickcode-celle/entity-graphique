@@ -18,19 +18,22 @@ const params = {
   speed: 0.030,
   minSpeed: 0.022,
   maxSpeed: 0.042,
-  catchup: 0.42,
+  catchup: 0.46,
   turnRate: 1.75,
   frameX: 3.25,
   frameY: 1.95,
-  trailSpacing: 1.05,
-  cohesion: 0.16,
-  separation: 0.055,
-  separationDistance: 0.25,
-  lateralFreedom: 0.28,
+  trailSpacing: 0.90,
+  cohesion: 0.18,
+  separation: 0.085,
+  separationDistance: 0.31,
+  lateralFreedom: 0.34,
+  bodyWidth: 0.95,
+  bodyHeight: 0.70,
+  antiStraggle: 0.55,
   depth: 0.48,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V12.1' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V12.2' })
 gui.add(params, 'speed', 0.015, 0.05, 0.001).name('Vitesse tête')
 gui.add(params, 'minSpeed', 0.012, 0.04, 0.001).name('Vitesse mini')
 gui.add(params, 'maxSpeed', 0.025, 0.06, 0.001).name('Vitesse maxi')
@@ -38,10 +41,13 @@ gui.add(params, 'catchup', 0.05, 0.9, 0.01).name('Rattrapage')
 gui.add(params, 'turnRate', 0.5, 3.0, 0.05).name('Fluidité virage')
 gui.add(params, 'frameX', 2.4, 4.0, 0.05).name('Cadre horizontal')
 gui.add(params, 'frameY', 1.4, 2.6, 0.05).name('Cadre vertical')
-gui.add(params, 'trailSpacing', 0.6, 1.8, 0.05).name('Retard trajectoire')
+gui.add(params, 'trailSpacing', 0.5, 1.8, 0.05).name('Retard trajectoire')
 gui.add(params, 'cohesion', 0.04, 0.35, 0.005).name('Cohésion parcours')
-gui.add(params, 'separation', 0, 0.15, 0.002).name('Séparation')
+gui.add(params, 'separation', 0, 0.18, 0.002).name('Séparation')
 gui.add(params, 'lateralFreedom', 0.08, 0.55, 0.01).name('Liberté latérale')
+gui.add(params, 'bodyWidth', 0.55, 1.5, 0.02).name('Largeur corps')
+gui.add(params, 'bodyHeight', 0.35, 1.2, 0.02).name('Hauteur corps')
+gui.add(params, 'antiStraggle', 0.1, 1.0, 0.02).name('Anti-décrochage')
 gui.add(params, 'depth', 0.10, 0.9, 0.02).name('Profondeur')
 
 scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x20242a, 1.15))
@@ -62,11 +68,8 @@ const trail = []
 
 const leaderHeading = new THREE.Vector3(1, 0.06, 0).normalize()
 const leaderDesired = leaderHeading.clone()
-
 const leaderStart = new THREE.Vector3(-1.55, 0, 0)
 
-// Pré-histoire rectiligne du parcours : dès la première image, les suiveuses
-// disposent déjà d'une route cohérente derrière la tête.
 for (let i = 0; i < 420; i++) {
   trail.push({
     position: leaderStart.clone().addScaledVector(leaderHeading, -i * params.speed),
@@ -82,15 +85,16 @@ for (let i = 0; i < 100; i++) {
   })
   const mesh = new THREE.Mesh(geometry, material)
 
-  const rank = i === 0 ? 0 : 10 + Math.floor((i - 1) / 5) * params.trailSpacing
+  const rank = i === 0 ? 0 : 8 + Math.floor((i - 1) / 8) * params.trailSpacing
   const sampleIndex = THREE.MathUtils.clamp(Math.floor(rank), 0, trail.length - 1)
   const sample = trail[sampleIndex]
-  const lane = i === 0 ? 0 : ((i - 1) % 5) - 2
+  const lane = i === 0 ? 0 : ((i - 1) % 8) - 3.5
+  const band = i === 0 ? 0 : Math.floor((i - 1) / 8) % 3 - 1
   const side = new THREE.Vector3(-sample.heading.y, sample.heading.x, 0).normalize()
 
   mesh.position.copy(sample.position)
-  mesh.position.addScaledVector(side, lane * 0.20 + (Math.random() - 0.5) * 0.07)
-  mesh.position.z = (Math.random() - 0.5) * params.depth * 0.7
+  mesh.position.addScaledVector(side, lane * 0.16 + (Math.random() - 0.5) * 0.05)
+  mesh.position.z = band * 0.09 + (Math.random() - 0.5) * params.depth * 0.22
 
   marbles.push({
     mesh,
@@ -98,7 +102,8 @@ for (let i = 0; i < 100; i++) {
     phase: Math.random() * Math.PI * 2,
     trailOffset: rank,
     speed: params.speed,
-    laneBias: lane * 0.18 + (Math.random() - 0.5) * 0.05,
+    laneNorm: lane / 3.5,
+    bandNorm: band,
   })
   scene.add(mesh)
 }
@@ -146,10 +151,7 @@ function chooseLeaderDirection() {
 }
 
 function pushTrail() {
-  trail.unshift({
-    position: leader.mesh.position.clone(),
-    heading: leader.heading.clone(),
-  })
+  trail.unshift({ position: leader.mesh.position.clone(), heading: leader.heading.clone() })
   if (trail.length > 700) trail.pop()
 }
 
@@ -165,12 +167,8 @@ function updateLeader(dt) {
 
   const velocity = tmp.copy(leader.heading).multiplyScalar(params.speed)
   leader.mesh.position.addScaledVector(velocity, dt * 60)
-
-  // Deuxième niveau de sécurité : bien avant le bord visuel, la direction est
-  // déjà tournée vers l'intérieur. Le clamp n'est qu'un filet numérique ultime.
   leader.mesh.position.x = THREE.MathUtils.clamp(leader.mesh.position.x, -params.frameX, params.frameX)
   leader.mesh.position.y = THREE.MathUtils.clamp(leader.mesh.position.y, -params.frameY, params.frameY)
-
   pushTrail()
 }
 
@@ -179,20 +177,20 @@ function updateFollower(i, dt, elapsed) {
   const sample = trailSample(m.trailOffset)
 
   side.set(-sample.heading.y, sample.heading.x, 0).normalize()
+  const breathing = Math.sin(m.phase + elapsed * 0.42) * params.lateralFreedom * 0.15
+  const laneOffset = m.laneNorm * params.bodyWidth + breathing
 
-  // Liberté locale faible et cohérente : elle donne de l'épaisseur sans permettre
-  // à la bille d'abandonner son couloir autour du parcours commun.
-  const breathing = Math.sin(m.phase + elapsed * 0.48) * params.lateralFreedom * 0.28
   target.copy(sample.position)
-  target.addScaledVector(side, m.laneBias + breathing)
-  target.z += Math.sin(m.phase * 1.71 + elapsed * 0.31) * params.depth * 0.22
+  target.addScaledVector(side, laneOffset)
+  target.z += m.bandNorm * params.bodyHeight * 0.18 + Math.sin(m.phase * 1.71 + elapsed * 0.31) * params.depth * 0.10
 
   const toTarget = tmp.copy(target).sub(m.mesh.position)
   const distance = toTarget.length()
   if (distance > 0.0001) toTarget.normalize()
 
   const desired = tmp2.copy(sample.heading)
-  const correction = THREE.MathUtils.clamp(distance * params.cohesion, 0, 0.72)
+  let correction = THREE.MathUtils.clamp(distance * params.cohesion, 0, 0.72)
+  if (distance > 0.75) correction = Math.max(correction, THREE.MathUtils.clamp((distance - 0.75) * params.antiStraggle, 0, 0.78))
   desired.lerp(toTarget, correction).normalize()
 
   sep.set(0, 0, 0)
@@ -214,29 +212,28 @@ function updateFollower(i, dt, elapsed) {
     desired.add(sep).normalize()
   }
 
-  // Jamais de marche arrière : la correction de trajectoire ne peut pas inverser le vol.
   if (desired.dot(m.heading) < 0.20) desired.lerp(m.heading, 0.82).normalize()
 
   const turn = 1 - Math.exp(-params.turnRate * dt)
   m.heading.lerp(desired, turn).normalize()
 
-  // La différence essentielle avec V12 : une bille en retard accélère légèrement,
-  // une bille proche de sa cible ralentit, mais la vitesse reste TOUJOURS positive.
   const forwardError = target.clone().sub(m.mesh.position).dot(sample.heading)
   const wantedSpeed = THREE.MathUtils.clamp(
-    params.speed + forwardError * params.catchup * 0.018,
+    params.speed + forwardError * params.catchup * 0.020,
     params.minSpeed,
     params.maxSpeed
   )
-  m.speed = THREE.MathUtils.lerp(m.speed, wantedSpeed, 1 - Math.exp(-4.0 * dt))
+  m.speed = THREE.MathUtils.lerp(m.speed, wantedSpeed, 1 - Math.exp(-4.5 * dt))
 
   const velocity = tmp.copy(m.heading).multiplyScalar(m.speed)
   m.mesh.position.addScaledVector(velocity, dt * 60)
 
-  // Si une bille approche réellement du cadre, on n'attend pas qu'elle sorte :
-  // on réduit progressivement sa liberté latérale en la ramenant vers son parcours.
-  if (Math.abs(m.mesh.position.x) > params.frameX * 0.92 || Math.abs(m.mesh.position.y) > params.frameY * 0.92) {
-    m.mesh.position.lerp(target, 0.035)
+  if (distance > 1.15) {
+    m.mesh.position.lerp(target, THREE.MathUtils.clamp((distance - 1.15) * 0.045, 0, 0.08))
+  }
+
+  if (Math.abs(m.mesh.position.x) > params.frameX * 0.94 || Math.abs(m.mesh.position.y) > params.frameY * 0.94) {
+    m.mesh.position.lerp(target, 0.055)
   }
 }
 
@@ -250,11 +247,7 @@ function updateDepthCue(m) {
 
 function updateSwarm(dt, elapsed) {
   updateLeader(dt)
-
-  for (let i = 1; i < marbles.length; i++) {
-    updateFollower(i, dt, elapsed)
-  }
-
+  for (let i = 1; i < marbles.length; i++) updateFollower(i, dt, elapsed)
   for (const m of marbles) updateDepthCue(m)
 }
 
