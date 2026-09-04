@@ -22,18 +22,18 @@ const params = {
   turnRate: 1.75,
   frameX: 3.25,
   frameY: 1.95,
-  trailSpacing: 7.5,
+  bodyLength: 92,
   cohesion: 0.18,
-  separation: 0.085,
-  separationDistance: 0.31,
+  separation: 0.080,
+  separationDistance: 0.30,
   lateralFreedom: 0.34,
-  bodyWidth: 1.15,
+  bodyWidth: 1.18,
   bodyHeight: 0.70,
   antiStraggle: 0.55,
   depth: 0.48,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V12.3' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V12.4' })
 gui.add(params, 'speed', 0.015, 0.05, 0.001).name('Vitesse tête')
 gui.add(params, 'minSpeed', 0.012, 0.04, 0.001).name('Vitesse mini')
 gui.add(params, 'maxSpeed', 0.025, 0.06, 0.001).name('Vitesse maxi')
@@ -41,7 +41,7 @@ gui.add(params, 'catchup', 0.05, 0.9, 0.01).name('Rattrapage')
 gui.add(params, 'turnRate', 0.5, 3.0, 0.05).name('Fluidité virage')
 gui.add(params, 'frameX', 2.4, 4.0, 0.05).name('Cadre horizontal')
 gui.add(params, 'frameY', 1.4, 2.6, 0.05).name('Cadre vertical')
-gui.add(params, 'trailSpacing', 3.0, 12.0, 0.25).name('Écart longitudinal')
+gui.add(params, 'bodyLength', 55, 130, 1).name('Longueur corps')
 gui.add(params, 'cohesion', 0.04, 0.35, 0.005).name('Cohésion parcours')
 gui.add(params, 'separation', 0, 0.18, 0.002).name('Séparation')
 gui.add(params, 'lateralFreedom', 0.08, 0.55, 0.01).name('Liberté latérale')
@@ -77,42 +77,72 @@ for (let i = 0; i < 520; i++) {
   })
 }
 
-for (let i = 0; i < 100; i++) {
-  const material = new THREE.MeshStandardMaterial({
-    color: 0xf1f3f5,
-    roughness: 0.32,
-    metalness: 0.04,
-  })
-  const mesh = new THREE.Mesh(geometry, material)
+function randBell() {
+  return (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2
+}
 
-  const row = i === 0 ? 0 : Math.floor((i - 1) / 8)
-  const rank = i === 0 ? 0 : 8 + row * params.trailSpacing
-  const sampleIndex = THREE.MathUtils.clamp(Math.floor(rank), 0, trail.length - 1)
-  const sample = trail[sampleIndex]
-  const lane = i === 0 ? 0 : ((i - 1) % 8) - 3.5
-  const band = i === 0 ? 0 : row % 3 - 1
+const initialSlots = []
+for (let i = 1; i < 100; i++) {
+  let slot
+  let tries = 0
+  do {
+    const u = Math.random()
+    const longitudinal = 7 + Math.pow(u, 0.92) * params.bodyLength
+    const lateral = THREE.MathUtils.clamp(randBell() * 1.45, -1, 1)
+    const depthNorm = THREE.MathUtils.clamp(randBell() * 1.2, -1, 1)
+    slot = { longitudinal, lateral, depthNorm }
+    tries++
+  } while (
+    tries < 80 &&
+    initialSlots.some(s => {
+      const dx = (s.longitudinal - slot.longitudinal) * params.speed
+      const dy = (s.lateral - slot.lateral) * params.bodyWidth
+      return Math.hypot(dx, dy) < 0.24
+    })
+  )
+  initialSlots.push(slot)
+}
+
+const leaderMaterial = new THREE.MeshStandardMaterial({ color: 0xf1f3f5, roughness: 0.32, metalness: 0.04 })
+const leaderMesh = new THREE.Mesh(geometry, leaderMaterial)
+leaderMesh.position.copy(leaderStart)
+marbles.push({
+  mesh: leaderMesh,
+  heading: leaderHeading.clone(),
+  phase: Math.random() * Math.PI * 2,
+  trailOffset: 0,
+  speed: params.speed,
+  laneNorm: 0,
+  depthNorm: 0,
+  longitudinalNorm: 0,
+})
+scene.add(leaderMesh)
+
+for (let i = 1; i < 100; i++) {
+  const slot = initialSlots[i - 1]
+  const material = new THREE.MeshStandardMaterial({ color: 0xf1f3f5, roughness: 0.32, metalness: 0.04 })
+  const mesh = new THREE.Mesh(geometry, material)
+  const sample = trail[Math.floor(slot.longitudinal)]
   const side = new THREE.Vector3(-sample.heading.y, sample.heading.x, 0).normalize()
 
   mesh.position.copy(sample.position)
-  mesh.position.addScaledVector(side, (lane / 3.5) * params.bodyWidth + (Math.random() - 0.5) * 0.05)
-  mesh.position.z = band * 0.09 + (Math.random() - 0.5) * params.depth * 0.22
+  mesh.position.addScaledVector(side, slot.lateral * params.bodyWidth)
+  mesh.position.z = slot.depthNorm * params.depth * 0.55
 
   marbles.push({
     mesh,
     heading: sample.heading.clone(),
     phase: Math.random() * Math.PI * 2,
-    trailOffset: rank,
+    trailOffset: slot.longitudinal,
     speed: params.speed,
-    laneNorm: lane / 3.5,
-    bandNorm: band,
+    laneNorm: slot.lateral,
+    depthNorm: slot.depthNorm,
+    longitudinalNorm: slot.longitudinal / params.bodyLength,
   })
   scene.add(mesh)
 }
 
 const leader = marbles[0]
-leader.mesh.position.copy(leaderStart)
-leader.trailOffset = 0
-
 const tmp = new THREE.Vector3()
 const tmp2 = new THREE.Vector3()
 const target = new THREE.Vector3()
@@ -123,11 +153,7 @@ const inward = new THREE.Vector3()
 function rotatePlanar(v, angle) {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
-  return new THREE.Vector3(
-    v.x * c - v.y * s,
-    v.x * s + v.y * c,
-    v.z
-  ).normalize()
+  return new THREE.Vector3(v.x * c - v.y * s, v.x * s + v.y * c, v.z).normalize()
 }
 
 function chooseLeaderDirection() {
@@ -165,9 +191,7 @@ function updateLeader(dt) {
   chooseLeaderDirection()
   const turn = 1 - Math.exp(-params.turnRate * dt)
   leader.heading.lerp(leaderDesired, turn).normalize()
-
-  const velocity = tmp.copy(leader.heading).multiplyScalar(params.speed)
-  leader.mesh.position.addScaledVector(velocity, dt * 60)
+  leader.mesh.position.addScaledVector(tmp.copy(leader.heading).multiplyScalar(params.speed), dt * 60)
   leader.mesh.position.x = THREE.MathUtils.clamp(leader.mesh.position.x, -params.frameX, params.frameX)
   leader.mesh.position.y = THREE.MathUtils.clamp(leader.mesh.position.y, -params.frameY, params.frameY)
   pushTrail()
@@ -175,22 +199,24 @@ function updateLeader(dt) {
 
 function updateFollower(i, dt, elapsed) {
   const m = marbles[i]
+  m.trailOffset = 7 + m.longitudinalNorm * params.bodyLength
   const sample = trailSample(m.trailOffset)
 
   side.set(-sample.heading.y, sample.heading.x, 0).normalize()
-  const breathing = Math.sin(m.phase + elapsed * 0.42) * params.lateralFreedom * 0.15
-  const laneOffset = m.laneNorm * params.bodyWidth + breathing
+  const slowBreath = Math.sin(m.phase + elapsed * 0.38) * params.lateralFreedom * 0.12
+  const crossWave = Math.sin(elapsed * 0.24 + m.longitudinalNorm * 5.5) * 0.10
+  const laneOffset = (m.laneNorm + crossWave * (1 - Math.abs(m.laneNorm) * 0.45)) * params.bodyWidth + slowBreath
 
   target.copy(sample.position)
   target.addScaledVector(side, laneOffset)
-  target.z += m.bandNorm * params.bodyHeight * 0.18 + Math.sin(m.phase * 1.71 + elapsed * 0.31) * params.depth * 0.10
+  target.z += m.depthNorm * params.depth * 0.58 + Math.sin(m.phase * 1.71 + elapsed * 0.29) * params.depth * 0.07
 
   const toTarget = tmp.copy(target).sub(m.mesh.position)
   const distance = toTarget.length()
   if (distance > 0.0001) toTarget.normalize()
 
   const desired = tmp2.copy(sample.heading)
-  let correction = THREE.MathUtils.clamp(distance * params.cohesion, 0, 0.72)
+  let correction = THREE.MathUtils.clamp(distance * params.cohesion, 0, 0.70)
   if (distance > 0.75) correction = Math.max(correction, THREE.MathUtils.clamp((distance - 0.75) * params.antiStraggle, 0, 0.78))
   desired.lerp(toTarget, correction).normalize()
 
@@ -200,18 +226,10 @@ function updateFollower(i, dt, elapsed) {
     const other = marbles[j]
     const d = m.mesh.position.distanceTo(other.mesh.position)
     if (d > 0.0001 && d < params.separationDistance) {
-      sep.add(
-        tmp.copy(m.mesh.position)
-          .sub(other.mesh.position)
-          .normalize()
-          .multiplyScalar(1 - d / params.separationDistance)
-      )
+      sep.add(tmp.copy(m.mesh.position).sub(other.mesh.position).normalize().multiplyScalar(1 - d / params.separationDistance))
     }
   }
-  if (sep.lengthSq() > 0.0001) {
-    sep.normalize().multiplyScalar(params.separation)
-    desired.add(sep).normalize()
-  }
+  if (sep.lengthSq() > 0.0001) desired.add(sep.normalize().multiplyScalar(params.separation)).normalize()
 
   if (desired.dot(m.heading) < 0.20) desired.lerp(m.heading, 0.82).normalize()
 
@@ -219,31 +237,18 @@ function updateFollower(i, dt, elapsed) {
   m.heading.lerp(desired, turn).normalize()
 
   const forwardError = target.clone().sub(m.mesh.position).dot(sample.heading)
-  const wantedSpeed = THREE.MathUtils.clamp(
-    params.speed + forwardError * params.catchup * 0.020,
-    params.minSpeed,
-    params.maxSpeed
-  )
+  const wantedSpeed = THREE.MathUtils.clamp(params.speed + forwardError * params.catchup * 0.020, params.minSpeed, params.maxSpeed)
   m.speed = THREE.MathUtils.lerp(m.speed, wantedSpeed, 1 - Math.exp(-4.5 * dt))
+  m.mesh.position.addScaledVector(tmp.copy(m.heading).multiplyScalar(m.speed), dt * 60)
 
-  const velocity = tmp.copy(m.heading).multiplyScalar(m.speed)
-  m.mesh.position.addScaledVector(velocity, dt * 60)
-
-  if (distance > 1.15) {
-    m.mesh.position.lerp(target, THREE.MathUtils.clamp((distance - 1.15) * 0.045, 0, 0.08))
-  }
-
-  if (Math.abs(m.mesh.position.x) > params.frameX * 0.94 || Math.abs(m.mesh.position.y) > params.frameY * 0.94) {
-    m.mesh.position.lerp(target, 0.055)
-  }
+  if (distance > 1.15) m.mesh.position.lerp(target, THREE.MathUtils.clamp((distance - 1.15) * 0.045, 0, 0.08))
+  if (Math.abs(m.mesh.position.x) > params.frameX * 0.94 || Math.abs(m.mesh.position.y) > params.frameY * 0.94) m.mesh.position.lerp(target, 0.055)
 }
 
 function updateDepthCue(m) {
   const zNorm = THREE.MathUtils.clamp((m.mesh.position.z / Math.max(params.depth, 0.01) + 1) * 0.5, 0, 1)
-  const scale = THREE.MathUtils.lerp(0.86, 1.16, zNorm)
-  m.mesh.scale.setScalar(scale)
-  const lightness = THREE.MathUtils.lerp(0.55, 0.96, zNorm)
-  m.mesh.material.color.setHSL(0.60, 0.05, lightness)
+  m.mesh.scale.setScalar(THREE.MathUtils.lerp(0.86, 1.16, zNorm))
+  m.mesh.material.color.setHSL(0.60, 0.05, THREE.MathUtils.lerp(0.55, 0.96, zNorm))
 }
 
 function updateSwarm(dt, elapsed) {
