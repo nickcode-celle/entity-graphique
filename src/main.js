@@ -24,6 +24,7 @@ scene.background = new THREE.Color(0x16181b)
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 1, 4000)
 camera.position.z = 850
 let mouseX = 10000, mouseY = 10000, windowHalfX = innerWidth/2, windowHalfY = innerHeight/2, last = performance.now()
+let movementSpeed = 1
 
 const positionShader = `
 uniform float time; uniform float delta;
@@ -75,10 +76,10 @@ scene.add(new THREE.Mesh(geo,mat))
 
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
-const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850,TAILLE:1}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value});gui.add(controls,'TAILLE',.25,3,.05).name('TAILLE BILLES').onChange(value=>{su.marbleScale.value=value})
+const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850,TAILLE:1,VITESSE:1}
+const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value});gui.add(controls,'TAILLE',.25,3,.05).name('TAILLE BILLES').onChange(value=>{su.marbleScale.value=value});gui.add(controls,'VITESSE',.1,3,.05).name('VITESSE').onChange(value=>{movementSpeed=value})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
-function animate(){requestAnimationFrame(animate);const now=performance.now();let delta=(now-last)/1000;if(delta>1)delta=1;last=now;pu.time.value=now;pu.delta.value=delta;vu.time.value=now;vu.delta.value=delta;vu.predator.value.set(.5*mouseX/windowHalfX,-.5*mouseY/windowHalfY,0);mouseX=mouseY=10000;gpuCompute.compute();su.texturePosition.value=gpuCompute.getCurrentRenderTarget(positionVariable).texture;renderer.render(scene,camera)}
+function animate(){requestAnimationFrame(animate);const now=performance.now();let delta=(now-last)/1000;if(delta>1)delta=1;last=now;const simulationDelta=delta*movementSpeed;pu.time.value=now;pu.delta.value=simulationDelta;vu.time.value=now;vu.delta.value=simulationDelta;vu.predator.value.set(.5*mouseX/windowHalfX,-.5*mouseY/windowHalfY,0);mouseX=mouseY=10000;gpuCompute.compute();su.texturePosition.value=gpuCompute.getCurrentRenderTarget(positionVariable).texture;renderer.render(scene,camera)}
 animate()
