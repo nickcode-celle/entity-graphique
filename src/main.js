@@ -15,24 +15,33 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 app.appendChild(renderer.domElement)
 
 const params = {
-  width: 7.8,
-  height: 3.6,
-  depth: 0.16,
-  deformation: 1.0,
-  waveSpeed: 0.42,
-  follow: 0.055,
-  damping: 0.90,
-  drift: 0.55,
+  neighbours: 7,
+  alignment: 0.065,
+  attraction: 0.010,
+  repulsion: 0.12,
+  preferredDistance: 0.78,
+  dangerDistance: 0.38,
+  speed: 0.040,
+  initiative: 0.020,
+  initiativeRate: 0.28,
+  reactionMin: 0.05,
+  reactionMax: 0.20,
+  depth: 0.32,
+  centering: 0.0018,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V6' })
-gui.add(params, 'width', 5.5, 10, 0.1).name('Largeur')
-gui.add(params, 'height', 2.2, 5.5, 0.1).name('Hauteur')
-gui.add(params, 'depth', 0.02, 0.6, 0.01).name('Profondeur')
-gui.add(params, 'deformation', 0, 1.8, 0.02).name('Déformation')
-gui.add(params, 'waveSpeed', 0.08, 1.1, 0.01).name('Rythme')
-gui.add(params, 'follow', 0.01, 0.12, 0.001).name('Souplesse')
-gui.add(params, 'drift', 0, 1.2, 0.02).name('Déplacement global')
+const gui = new GUI({ title: 'ENTITY — Murmuration V7' })
+gui.add(params, 'neighbours', 3, 12, 1).name('Voisins suivis')
+gui.add(params, 'alignment', 0, 0.15, 0.001).name('Alignement')
+gui.add(params, 'attraction', 0, 0.04, 0.0005).name('Attraction')
+gui.add(params, 'repulsion', 0, 0.25, 0.002).name('Répulsion')
+gui.add(params, 'preferredDistance', 0.45, 1.4, 0.01).name('Distance confortable')
+gui.add(params, 'dangerDistance', 0.2, 0.7, 0.01).name('Distance sécurité')
+gui.add(params, 'speed', 0.015, 0.08, 0.001).name('Vitesse')
+gui.add(params, 'initiative', 0, 0.06, 0.001).name('Initiative')
+gui.add(params, 'initiativeRate', 0.05, 1.0, 0.01).name('Fréquence initiative')
+gui.add(params, 'depth', 0.05, 0.8, 0.01).name('Profondeur')
+gui.add(params, 'centering', 0, 0.01, 0.0001).name('Rappel centre')
 
 const swarm = new THREE.Group()
 scene.add(swarm)
@@ -48,93 +57,154 @@ fillLight.position.set(-5, -2, 4)
 scene.add(fillLight)
 
 const marbles = []
-
-// Chaque bille possède une place durable dans une même nappe souple.
-// Les positions ne forment pas une grille visible : elles sont irrégulières,
-// mais leur ordre topologique reste stable pour empêcher les grappes séparées.
 for (let i = 0; i < 100; i++) {
   const mesh = new THREE.Mesh(geometry, material)
 
-  const u = (i + 0.5) / 100
-  const jitterU = (Math.random() - 0.5) * 0.018
-  const uu = THREE.MathUtils.clamp(u + jitterU, 0, 1)
+  // Essaim initial large et peu profond, sans forme cible imposée.
+  mesh.position.set(
+    (Math.random() - 0.5) * 7.2,
+    (Math.random() - 0.5) * 3.4,
+    (Math.random() - 0.5) * params.depth
+  )
 
-  // Distribution verticale pseudo-aléatoire mais régulière sur l'ensemble de la nappe.
-  const golden = 0.61803398875
-  const v = ((i * golden) % 1) * 2 - 1
+  const heading = new THREE.Vector3(
+    1,
+    (Math.random() - 0.5) * 0.35,
+    (Math.random() - 0.5) * 0.08
+  ).normalize()
 
-  const x = (uu - 0.5) * params.width
-  const envelope = 0.72 + 0.28 * Math.sin(Math.PI * uu)
-  const y = v * params.height * 0.5 * envelope
-  const z = (Math.random() - 0.5) * params.depth
-
-  mesh.position.set(x, y, z)
+  const velocity = heading.multiplyScalar(params.speed * (0.9 + Math.random() * 0.15))
 
   marbles.push({
     mesh,
-    u: uu,
-    v,
-    velocity: new THREE.Vector3(),
-    phase: Math.random() * Math.PI * 2,
+    velocity,
+    reactionTimer: params.reactionMin + Math.random() * (params.reactionMax - params.reactionMin),
+    initiativeTimer: 0.7 + Math.random() * 4.0,
+    initiativeDirection: new THREE.Vector3(),
+    initiativeLife: 0,
   })
   swarm.add(mesh)
 }
 
 const clock = new THREE.Clock()
-const target = new THREE.Vector3()
+const center = new THREE.Vector3()
+const steer = new THREE.Vector3()
+const alignmentForce = new THREE.Vector3()
+const attractionForce = new THREE.Vector3()
+const repulsionForce = new THREE.Vector3()
+const toOther = new THREE.Vector3()
+const tmp = new THREE.Vector3()
 
-function sheetTarget(m, elapsed) {
-  const u = m.u
-  const v = m.v
-  const t = elapsed * params.waveSpeed
-
-  // Silhouette irrégulière : bosses, creux et étranglements qui se déplacent.
-  const widthWarp =
-    Math.sin(u * Math.PI * 2.0 - t * 0.9) * 0.34 +
-    Math.sin(u * Math.PI * 4.6 + t * 0.55) * 0.13
-
-  const envelope =
-    0.72 +
-    0.20 * Math.sin(Math.PI * u) +
-    0.16 * Math.sin(u * Math.PI * 3.2 - t * 0.8)
-
-  const x =
-    (u - 0.5) * params.width +
-    widthWarp * params.deformation
-
-  const centerWave =
-    Math.sin(u * Math.PI * 2.2 - t * 1.05) * 0.72 +
-    Math.sin(u * Math.PI * 5.1 + t * 0.47) * 0.22
-
-  const pinch = 1 -
-    0.34 * Math.exp(-Math.pow((u - (0.48 + Math.sin(t * 0.37) * 0.10)) / 0.13, 2))
-
-  const y =
-    centerWave * params.deformation +
-    v * params.height * 0.5 * envelope * pinch
-
-  const z =
-    Math.sin(u * Math.PI * 3.1 - t * 0.62 + m.phase) *
-    params.depth * 0.48 * (0.35 + 0.65 * Math.abs(v))
-
-  // Le corps entier dérive lentement sans jamais quitter le champ.
-  const driftX = Math.sin(t * 0.24) * params.drift
-  const driftY = Math.sin(t * 0.19 + 1.2) * params.drift * 0.38
-
-  target.set(x + driftX, y + driftY, z)
-  return target
+function nearestNeighbours(index) {
+  const origin = marbles[index].mesh.position
+  const distances = []
+  for (let j = 0; j < marbles.length; j++) {
+    if (j === index) continue
+    distances.push({ j, d2: origin.distanceToSquared(marbles[j].mesh.position) })
+  }
+  distances.sort((a, b) => a.d2 - b.d2)
+  return distances.slice(0, params.neighbours)
 }
 
-function updateSwarm(dt, elapsed) {
-  for (const m of marbles) {
-    const goal = sheetTarget(m, elapsed)
+function updateDecision(i) {
+  const marble = marbles[i]
+  const neighbours = nearestNeighbours(i)
 
-    // Ressort souple vers la forme collective cible.
-    m.velocity.x += (goal.x - m.mesh.position.x) * params.follow * dt * 60
-    m.velocity.y += (goal.y - m.mesh.position.y) * params.follow * dt * 60
-    m.velocity.z += (goal.z - m.mesh.position.z) * params.follow * 1.4 * dt * 60
+  alignmentForce.set(0, 0, 0)
+  attractionForce.set(0, 0, 0)
+  repulsionForce.set(0, 0, 0)
 
-    m.velocity.multiplyScalar(Math.pow(params.damping, dt * 60))
+  let meanDistance = 0
+
+  for (const n of neighbours) {
+    const other = marbles[n.j]
+    const distance = Math.sqrt(n.d2)
+    meanDistance += distance
+    alignmentForce.add(other.velocity)
+
+    toOther.copy(other.mesh.position).sub(marble.mesh.position)
+
+    // La répulsion n'agit que très près : pas d'espacement géométrique forcé.
+    if (distance < params.dangerDistance && distance > 0.0001) {
+      const strength = 1 - distance / params.dangerDistance
+      repulsionForce.add(tmp.copy(toOther).normalize().multiplyScalar(-strength))
+    }
+  }
+
+  meanDistance /= Math.max(neighbours.length, 1)
+
+  if (neighbours.length) {
+    alignmentForce.divideScalar(neighbours.length).normalize()
+
+    // Attraction seulement lorsque le voisinage s'est réellement trop ouvert.
+    if (meanDistance > params.preferredDistance) {
+      for (const n of neighbours) {
+        attractionForce.add(marbles[n.j].mesh.position)
+      }
+      attractionForce.divideScalar(neighbours.length).sub(marble.mesh.position).normalize()
+    }
+  }
+
+  steer.set(0, 0, 0)
+  steer.addScaledVector(alignmentForce, params.alignment)
+  steer.addScaledVector(attractionForce, params.attraction)
+  steer.addScaledVector(repulsionForce, params.repulsion)
+
+  // Une bille peut momentanément initier un virage. Ses voisines ne reçoivent
+  // pas l'ordre directement : elles le captent ensuite via l'alignement local.
+  if (marble.initiativeLife > 0) {
+    steer.addScaledVector(marble.initiativeDirection, params.initiative)
+  }
+
+  marble.velocity.add(steer)
+
+  // Vitesse de vol conservée dans une plage étroite plutôt que ressort vers une position.
+  const minSpeed = params.speed * 0.82
+  const maxSpeed = params.speed * 1.18
+  const s = marble.velocity.length()
+  if (s < minSpeed) marble.velocity.setLength(minSpeed)
+  if (s > maxSpeed) marble.velocity.setLength(maxSpeed)
+}
+
+function updateSwarm(dt) {
+  center.set(0, 0, 0)
+  for (const m of marbles) center.add(m.mesh.position)
+  center.divideScalar(marbles.length)
+
+  for (let i = 0; i < marbles.length; i++) {
+    const m = marbles[i]
+
+    // Réactions asynchrones : chaque bille réévalue son voisinage à son propre rythme.
+    m.reactionTimer -= dt
+    if (m.reactionTimer <= 0) {
+      updateDecision(i)
+      m.reactionTimer = params.reactionMin + Math.random() * (params.reactionMax - params.reactionMin)
+    }
+
+    m.initiativeTimer -= dt
+    m.initiativeLife -= dt
+
+    if (m.initiativeTimer <= 0 && Math.random() < params.initiativeRate) {
+      const forward = m.velocity.clone().normalize()
+      const side = new THREE.Vector3(-forward.y, forward.x, 0).normalize()
+      const vertical = new THREE.Vector3(0, 1, 0)
+      m.initiativeDirection
+        .copy(side)
+        .multiplyScalar((Math.random() - 0.5) * 1.6)
+        .addScaledVector(vertical, (Math.random() - 0.5) * 0.65)
+        .normalize()
+      m.initiativeLife = 0.35 + Math.random() * 0.8
+      m.initiativeTimer = 1.5 + Math.random() * 5.0
+    }
+
+    // Même rappel pour toutes les billes : recentre le corps sans le comprimer.
+    m.velocity.x += -center.x * params.centering * dt * 60
+    m.velocity.y += -center.y * params.centering * dt * 60
+
+    // Faible profondeur : liberté 3D limitée, sans imposer une nappe ou une trajectoire.
+    m.velocity.z += -m.mesh.position.z * 0.020 * dt * 60
+    m.velocity.z *= Math.pow(0.94, dt * 60)
+
     m.mesh.position.addScaledVector(m.velocity, dt * 60)
   }
 }
@@ -142,7 +212,7 @@ function updateSwarm(dt, elapsed) {
 function animate() {
   requestAnimationFrame(animate)
   const dt = Math.min(clock.getDelta(), 1 / 30)
-  updateSwarm(dt, clock.elapsedTime)
+  updateSwarm(dt)
   renderer.render(scene, camera)
 }
 animate()
