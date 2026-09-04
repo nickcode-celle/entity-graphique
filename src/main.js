@@ -4,14 +4,16 @@ import './style.css'
 
 // ENTITY — OPEN-SOURCE FLOCKING BASELINE
 // Dynamics copied from the official Three.js r180 webgl_gpgpu_birds example (MIT).
-// Only two intentional presentation changes:
-//   1) WIDTH = 10 -> exactly 100 agents.
-//   2) agents are rendered as white spheres instead of bird triangles.
-// The flocking equations/weights below are otherwise the reference example.
+// Reference example: 1024 agents in a cube of side 800.
+// ENTITY keeps exactly 100 agents, so the simulation box is scaled by the cube root
+// of the population ratio to preserve the SAME 3D number density as the reference.
+// Rendering alone is changed from bird triangles to white spheres.
 
 const WIDTH = 10
 const BIRDS = WIDTH * WIDTH
-const BOUNDS = 800
+const REFERENCE_BIRDS = 32 * 32
+const REFERENCE_BOUNDS = 800
+const BOUNDS = REFERENCE_BOUNDS * Math.cbrt(BIRDS / REFERENCE_BIRDS)
 const BOUNDS_HALF = BOUNDS / 2
 
 const app = document.querySelector('#app')
@@ -219,7 +221,6 @@ positionVariable.wrapT = THREE.RepeatWrapping
 const computeError = gpuCompute.init()
 if (computeError !== null) throw new Error(computeError)
 
-// Sphere renderer only. It reads the position texture produced by the untouched flocking model.
 const sphereBase = new THREE.SphereGeometry(3.2, 16, 12)
 const sphereGeometry = new THREE.InstancedBufferGeometry()
 sphereGeometry.index = sphereBase.index
@@ -272,9 +273,8 @@ const sphereMaterial = new THREE.ShaderMaterial({
 const spheres = new THREE.Mesh(sphereGeometry, sphereMaterial)
 scene.add(spheres)
 
-// Small source label; no simulation controls are exposed so the reference model stays fixed.
 const label = document.createElement('div')
-label.textContent = '100 billes — Three.js GPGPU flocking reference (MIT)'
+label.textContent = '100 billes — Three.js GPGPU reference, densité conservée (MIT)'
 Object.assign(label.style, {
   position: 'fixed',
   left: '14px',
