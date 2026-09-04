@@ -24,6 +24,7 @@ const params = {
   cohesion: 0.0045,
   separation: 0.055,
   alignment: 0.035,
+  centering: 0.006,
   maxSpeed: 0.028,
   neighbourRadius: 1.5,
   comfortDistance: 0.48,
@@ -35,6 +36,7 @@ const gui = new GUI({ title: 'ENTITY — Murmuration V1' })
 gui.add(params, 'cohesion', 0, 0.02, 0.0001).name('Cohésion')
 gui.add(params, 'separation', 0, 0.15, 0.001).name('Séparation')
 gui.add(params, 'alignment', 0, 0.12, 0.001).name('Alignement')
+gui.add(params, 'centering', 0, 0.02, 0.0001).name('Rappel centre')
 gui.add(params, 'maxSpeed', 0.005, 0.08, 0.001).name('Vitesse')
 gui.add(params, 'neighbourRadius', 0.5, 3, 0.05).name('Rayon voisins')
 gui.add(params, 'comfortDistance', 0.2, 1, 0.01).name('Distance confort')
@@ -66,7 +68,6 @@ const marbles = []
 for (let i = 0; i < 100; i++) {
   const mesh = new THREE.Mesh(geometry, material)
 
-  // Nuage organique compact, volontairement non géométrique.
   const theta = Math.random() * Math.PI * 2
   const phi = Math.acos(2 * Math.random() - 1)
   const radius = Math.pow(Math.random(), 0.65) * 3.1
@@ -93,6 +94,7 @@ const center = new THREE.Vector3()
 const cohesionForce = new THREE.Vector3()
 const separationForce = new THREE.Vector3()
 const alignmentForce = new THREE.Vector3()
+const centeringForce = new THREE.Vector3()
 const delta = new THREE.Vector3()
 const tmp = new THREE.Vector3()
 const clock = new THREE.Clock()
@@ -106,6 +108,10 @@ function updateSwarm(dt, elapsed) {
   center.set(0, 0, 0)
   for (const marble of marbles) center.add(marble.mesh.position)
   center.divideScalar(marbles.length)
+
+  // Rappel doux vers l'origine : l'essaim reste libre, mais son centre de masse
+  // ne peut plus dériver hors du champ de la caméra.
+  centeringForce.copy(center).multiplyScalar(-params.centering)
 
   for (let i = 0; i < marbles.length; i++) {
     const marble = marbles[i]
@@ -158,12 +164,12 @@ function updateSwarm(dt, elapsed) {
       .addScaledVector(cohesionForce, dt * 60)
       .addScaledVector(separationForce, dt * 60)
       .addScaledVector(alignmentForce, dt * 60)
+      .addScaledVector(centeringForce, dt * 60)
 
     limitSpeed(marble.velocity, params.maxSpeed)
     marble.mesh.position.addScaledVector(marble.velocity, dt * 60)
   }
 
-  // Respiration : micro-dilatation collective autour du centre, sans changer la morphologie.
   const breath = Math.sin(elapsed * params.breathingSpeed * Math.PI * 2) * params.breathing
   const breathScale = 1 + breath * 0.0009 * dt * 60
 
@@ -183,7 +189,6 @@ function animate() {
 
   updateSwarm(dt, elapsed)
 
-  // Très légère rotation de présentation, uniquement pour lire le volume 3D.
   swarm.rotation.y += 0.00035 * dt * 60
 
   renderer.render(scene, camera)
