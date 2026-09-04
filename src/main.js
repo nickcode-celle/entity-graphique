@@ -5,12 +5,13 @@ import './style.css'
 // ENTITY — OPEN-SOURCE FLOCKING BASELINE
 // Dynamics copied from the official Three.js r180 webgl_gpgpu_birds example (MIT).
 // Reference example: 1024 agents in a cube of side 800.
-// ENTITY keeps exactly 100 agents, so the simulation box is scaled by the cube root
+// ENTITY test: exactly 1000 agents. The simulation box is scaled by the cube root
 // of the population ratio to preserve the SAME 3D number density as the reference.
 // Rendering alone is changed from bird triangles to white spheres.
 
-const WIDTH = 10
-const BIRDS = WIDTH * WIDTH
+const WIDTH = 40
+const HEIGHT = 25
+const BIRDS = WIDTH * HEIGHT
 const REFERENCE_BIRDS = 32 * 32
 const REFERENCE_BOUNDS = 800
 const BOUNDS = REFERENCE_BOUNDS * Math.cbrt(BIRDS / REFERENCE_BIRDS)
@@ -165,7 +166,7 @@ void main() {
 }
 `
 
-const gpuCompute = new GPUComputationRenderer(WIDTH, WIDTH, renderer)
+const gpuCompute = new GPUComputationRenderer(WIDTH, HEIGHT, renderer)
 const dtPosition = gpuCompute.createTexture()
 const dtVelocity = gpuCompute.createTexture()
 
@@ -232,7 +233,7 @@ sphereGeometry.instanceCount = BIRDS
 const references = new Float32Array(BIRDS * 2)
 for (let i = 0; i < BIRDS; i++) {
   references[i * 2] = (i % WIDTH + 0.5) / WIDTH
-  references[i * 2 + 1] = (Math.floor(i / WIDTH) + 0.5) / WIDTH
+  references[i * 2 + 1] = (Math.floor(i / WIDTH) + 0.5) / HEIGHT
 }
 sphereGeometry.setAttribute('reference', new THREE.InstancedBufferAttribute(references, 2))
 
@@ -274,7 +275,7 @@ const spheres = new THREE.Mesh(sphereGeometry, sphereMaterial)
 scene.add(spheres)
 
 const label = document.createElement('div')
-label.textContent = '100 billes — Three.js GPGPU reference, densité conservée (MIT)'
+label.textContent = '1000 billes — Three.js GPGPU reference, densité 3D conservée (MIT)'
 Object.assign(label.style, {
   position: 'fixed',
   left: '14px',
