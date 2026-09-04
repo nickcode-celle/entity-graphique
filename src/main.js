@@ -10,7 +10,7 @@ const REFERENCE_BIRDS = 32 * 32
 const REFERENCE_BOUNDS = 800
 const BASE_BOUNDS = REFERENCE_BOUNDS * Math.cbrt(BIRDS / REFERENCE_BIRDS)
 const initialFactor = Number(new URLSearchParams(location.search).get('bounds')) || 1
-const BOUNDS_FACTOR = THREE.MathUtils.clamp(initialFactor, 0.35, 1)
+const BOUNDS_FACTOR = THREE.MathUtils.clamp(initialFactor, 0.10, 1)
 const BOUNDS = BASE_BOUNDS * BOUNDS_FACTOR
 const BOUNDS_HALF = BOUNDS / 2
 
@@ -22,7 +22,7 @@ app.appendChild(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x16181b)
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 1, 3000)
-camera.position.z = 350
+camera.position.z = 550
 let mouseX = 10000, mouseY = 10000, windowHalfX = innerWidth/2, windowHalfY = innerHeight/2, last = performance.now()
 
 const positionShader = `
@@ -76,7 +76,7 @@ scene.add(new THREE.Mesh(geo,mat))
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
 const controls={BOUNDS:BOUNDS_FACTOR}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.35,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()})
+const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.10,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
