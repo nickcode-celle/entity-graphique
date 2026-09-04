@@ -4,7 +4,7 @@ import './style.css'
 
 const app = document.querySelector('#app')
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x050505)
+scene.background = new THREE.Color(0x16181b)
 
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 100)
 camera.position.set(0, 0, 11)
@@ -16,52 +16,66 @@ app.appendChild(renderer.domElement)
 
 const params = {
   neighbours: 7,
-  alignment: 0.070,
-  attraction: 0.012,
-  repulsion: 0.12,
+  alignment: 0.82,
+  attraction: 0.18,
+  repulsion: 0.90,
   preferredDistance: 0.82,
-  dangerDistance: 0.36,
+  dangerDistance: 0.34,
   speed: 0.034,
-  initiative: 0.012,
-  initiativeRate: 0.18,
-  reactionMin: 0.06,
+  turnRate: 1.55,
+  initiative: 0.55,
+  initiativeRate: 0.11,
+  initiativeLife: 0.55,
+  reactionMin: 0.07,
   reactionMax: 0.18,
-  depth: 0.28,
-  groupRadius: 3.35,
-  groupTether: 0.010,
+  propagationMin: 0.10,
+  propagationMax: 0.34,
+  linkDistance: 1.45,
+  linkTension: 0.030,
+  depth: 0.55,
   edgeForce: 0.020,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V8' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V9' })
 gui.add(params, 'neighbours', 3, 12, 1).name('Voisins suivis')
-gui.add(params, 'alignment', 0, 0.15, 0.001).name('Alignement')
-gui.add(params, 'attraction', 0, 0.04, 0.0005).name('Attraction locale')
-gui.add(params, 'repulsion', 0, 0.25, 0.002).name('Répulsion')
+gui.add(params, 'alignment', 0, 1.5, 0.01).name('Alignement')
+gui.add(params, 'attraction', 0, 0.6, 0.01).name('Attraction locale')
+gui.add(params, 'repulsion', 0, 1.8, 0.02).name('Répulsion')
 gui.add(params, 'preferredDistance', 0.45, 1.4, 0.01).name('Distance confortable')
 gui.add(params, 'dangerDistance', 0.2, 0.7, 0.01).name('Distance sécurité')
 gui.add(params, 'speed', 0.015, 0.08, 0.001).name('Vitesse')
-gui.add(params, 'initiative', 0, 0.06, 0.001).name('Initiative')
-gui.add(params, 'initiativeRate', 0.05, 1.0, 0.01).name('Fréquence initiative')
-gui.add(params, 'depth', 0.05, 0.8, 0.01).name('Profondeur')
-gui.add(params, 'groupRadius', 2.4, 5.0, 0.05).name('Rayon cohésion globale')
-gui.add(params, 'groupTether', 0, 0.03, 0.0005).name('Rappel groupe')
+gui.add(params, 'turnRate', 0.3, 3.5, 0.05).name('Fluidité virage')
+gui.add(params, 'initiative', 0, 1.2, 0.01).name('Initiative')
+gui.add(params, 'initiativeRate', 0.02, 0.5, 0.01).name('Fréquence initiative')
+gui.add(params, 'propagationMin', 0.03, 0.5, 0.01).name('Délai min propagation')
+gui.add(params, 'propagationMax', 0.08, 0.8, 0.01).name('Délai max propagation')
+gui.add(params, 'linkDistance', 0.8, 2.5, 0.02).name('Seuil continuité')
+gui.add(params, 'linkTension', 0, 0.08, 0.001).name('Tension continuité')
+gui.add(params, 'depth', 0.10, 1.4, 0.02).name('Profondeur')
 gui.add(params, 'edgeForce', 0, 0.05, 0.001).name('Rappel écran')
 
-const swarm = new THREE.Group()
-scene.add(swarm)
-
-const geometry = new THREE.SphereGeometry(0.105, 18, 18)
-const material = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.38, metalness: 0.06 })
-scene.add(new THREE.AmbientLight(0xffffff, 0.85))
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.4)
-keyLight.position.set(5, 6, 8)
+scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x20242a, 1.15))
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.6)
+keyLight.position.set(4.5, 5.5, 7)
 scene.add(keyLight)
-const fillLight = new THREE.DirectionalLight(0xffffff, 0.7)
-fillLight.position.set(-5, -2, 4)
-scene.add(fillLight)
+const rimLight = new THREE.DirectionalLight(0xbfd6ff, 2.2)
+rimLight.position.set(-6, 2, -3)
+scene.add(rimLight)
+const lowLight = new THREE.DirectionalLight(0xffffff, 0.65)
+lowLight.position.set(1, -5, 4)
+scene.add(lowLight)
 
+const geometry = new THREE.SphereGeometry(0.105, 20, 20)
 const marbles = []
+const clock = new THREE.Clock()
+let simTime = 0
+
 for (let i = 0; i < 100; i++) {
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xf1f3f5,
+    roughness: 0.32,
+    metalness: 0.04,
+  })
   const mesh = new THREE.Mesh(geometry, material)
 
   mesh.position.set(
@@ -72,32 +86,33 @@ for (let i = 0; i < 100; i++) {
 
   const heading = new THREE.Vector3(
     1,
-    (Math.random() - 0.5) * 0.28,
-    (Math.random() - 0.5) * 0.06
+    (Math.random() - 0.5) * 0.22,
+    (Math.random() - 0.5) * 0.08
   ).normalize()
-
-  const velocity = heading.multiplyScalar(params.speed * (0.92 + Math.random() * 0.12))
 
   marbles.push({
     mesh,
-    velocity,
+    heading: heading.clone(),
+    desiredHeading: heading.clone(),
+    velocity: heading.clone().multiplyScalar(params.speed),
     reactionTimer: params.reactionMin + Math.random() * (params.reactionMax - params.reactionMin),
-    initiativeTimer: 1.0 + Math.random() * 5.0,
+    propagationDelay: params.propagationMin + Math.random() * (params.propagationMax - params.propagationMin),
+    initiativeTimer: 1.2 + Math.random() * 6.0,
     initiativeDirection: new THREE.Vector3(),
     initiativeLife: 0,
+    history: [{ t: 0, heading: heading.clone() }],
   })
-  swarm.add(mesh)
+
+  scene.add(mesh)
 }
 
-const clock = new THREE.Clock()
-const center = new THREE.Vector3()
-const steer = new THREE.Vector3()
-const alignmentForce = new THREE.Vector3()
-const attractionForce = new THREE.Vector3()
-const repulsionForce = new THREE.Vector3()
-const toOther = new THREE.Vector3()
 const tmp = new THREE.Vector3()
-const toCenter = new THREE.Vector3()
+const tmp2 = new THREE.Vector3()
+const alignment = new THREE.Vector3()
+const attraction = new THREE.Vector3()
+const repulsion = new THREE.Vector3()
+const desired = new THREE.Vector3()
+const center = new THREE.Vector3()
 
 function nearestNeighbours(index) {
   const origin = marbles[index].mesh.position
@@ -110,69 +125,152 @@ function nearestNeighbours(index) {
   return distances.slice(0, params.neighbours)
 }
 
+function delayedHeading(m, targetTime) {
+  const h = m.history
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].t <= targetTime) return h[i].heading
+  }
+  return h[0].heading
+}
+
+function recordHistory(m) {
+  m.history.push({ t: simTime, heading: m.heading.clone() })
+  const keepAfter = simTime - 1.5
+  while (m.history.length > 2 && m.history[1].t < keepAfter) hshift(m.history)
+}
+
+function hshift(arr) {
+  arr.shift()
+}
+
 function updateDecision(i) {
-  const marble = marbles[i]
+  const m = marbles[i]
   const neighbours = nearestNeighbours(i)
 
-  alignmentForce.set(0, 0, 0)
-  attractionForce.set(0, 0, 0)
-  repulsionForce.set(0, 0, 0)
+  alignment.set(0, 0, 0)
+  attraction.set(0, 0, 0)
+  repulsion.set(0, 0, 0)
 
   let meanDistance = 0
+  const lookBack = simTime - m.propagationDelay
 
   for (const n of neighbours) {
     const other = marbles[n.j]
     const distance = Math.sqrt(n.d2)
     meanDistance += distance
-    alignmentForce.add(other.velocity)
 
-    toOther.copy(other.mesh.position).sub(marble.mesh.position)
+    // La bille ne voit pas la direction actuelle de sa voisine, mais une direction
+    // légèrement passée : le virage se propage de proche en proche au lieu d'être instantané.
+    alignment.add(delayedHeading(other, lookBack))
 
+    tmp.copy(other.mesh.position).sub(m.mesh.position)
     if (distance < params.dangerDistance && distance > 0.0001) {
       const strength = 1 - distance / params.dangerDistance
-      repulsionForce.add(tmp.copy(toOther).normalize().multiplyScalar(-strength))
+      repulsion.add(tmp2.copy(tmp).normalize().multiplyScalar(-strength))
     }
   }
 
   meanDistance /= Math.max(neighbours.length, 1)
 
   if (neighbours.length) {
-    alignmentForce.divideScalar(neighbours.length).normalize()
+    alignment.divideScalar(neighbours.length).normalize()
 
     if (meanDistance > params.preferredDistance) {
-      for (const n of neighbours) attractionForce.add(marbles[n.j].mesh.position)
-      attractionForce.divideScalar(neighbours.length).sub(marble.mesh.position).normalize()
+      for (const n of neighbours) attraction.add(marbles[n.j].mesh.position)
+      attraction.divideScalar(neighbours.length).sub(m.mesh.position).normalize()
     }
   }
 
-  steer.set(0, 0, 0)
-  steer.addScaledVector(alignmentForce, params.alignment)
-  steer.addScaledVector(attractionForce, params.attraction)
-  steer.addScaledVector(repulsionForce, params.repulsion)
+  desired.copy(m.heading)
+  desired.addScaledVector(alignment, params.alignment)
+  desired.addScaledVector(attraction, params.attraction)
+  desired.addScaledVector(repulsion, params.repulsion)
 
-  if (marble.initiativeLife > 0) {
-    steer.addScaledVector(marble.initiativeDirection, params.initiative)
+  if (m.initiativeLife > 0) {
+    desired.addScaledVector(m.initiativeDirection, params.initiative)
   }
 
-  marble.velocity.add(steer)
+  if (desired.lengthSq() > 0.0001) m.desiredHeading.copy(desired.normalize())
+}
 
-  const minSpeed = params.speed * 0.84
-  const maxSpeed = params.speed * 1.16
-  const s = marble.velocity.length()
-  if (s < minSpeed) marble.velocity.setLength(minSpeed)
-  if (s > maxSpeed) marble.velocity.setLength(maxSpeed)
+// Arbre couvrant minimum de l'essaim : il ne dessine aucune forme,
+// mais garantit qu'il existe toujours un chemin continu reliant les 100 billes.
+// La tension n'agit que lorsqu'un lien nécessaire à cette continuité devient trop long.
+function continuityEdges() {
+  const n = marbles.length
+  const inTree = new Array(n).fill(false)
+  const best = new Array(n).fill(Infinity)
+  const parent = new Array(n).fill(-1)
+  best[0] = 0
+
+  for (let step = 0; step < n; step++) {
+    let u = -1
+    let min = Infinity
+    for (let i = 0; i < n; i++) {
+      if (!inTree[i] && best[i] < min) {
+        min = best[i]
+        u = i
+      }
+    }
+    if (u < 0) break
+    inTree[u] = true
+
+    for (let v = 0; v < n; v++) {
+      if (inTree[v] || v === u) continue
+      const d2 = marbles[u].mesh.position.distanceToSquared(marbles[v].mesh.position)
+      if (d2 < best[v]) {
+        best[v] = d2
+        parent[v] = u
+      }
+    }
+  }
+
+  return parent
+}
+
+function applyContinuity(dt) {
+  const parent = continuityEdges()
+  for (let i = 1; i < marbles.length; i++) {
+    const p = parent[i]
+    if (p < 0) continue
+
+    const a = marbles[i]
+    const b = marbles[p]
+    tmp.copy(b.mesh.position).sub(a.mesh.position)
+    const d = tmp.length()
+    if (d <= params.linkDistance || d < 0.0001) continue
+
+    const excess = d - params.linkDistance
+    const strength = excess * params.linkTension * dt * 60
+    tmp.normalize()
+
+    // Même correction opposée sur les deux côtés du lien : on évite la rupture
+    // sans aspirer tout l'essaim vers un centre commun.
+    a.velocity.addScaledVector(tmp, strength)
+    b.velocity.addScaledVector(tmp, -strength)
+  }
+}
+
+function updateDepthCue(m) {
+  const zNorm = THREE.MathUtils.clamp((m.mesh.position.z / Math.max(params.depth, 0.01) + 1) * 0.5, 0, 1)
+  const scale = THREE.MathUtils.lerp(0.88, 1.14, zNorm)
+  m.mesh.scale.setScalar(scale)
+
+  const lightness = THREE.MathUtils.lerp(0.58, 0.94, zNorm)
+  m.mesh.material.color.setHSL(0.60, 0.05, lightness)
 }
 
 function updateSwarm(dt) {
+  simTime += dt
+
   center.set(0, 0, 0)
   for (const m of marbles) center.add(m.mesh.position)
   center.divideScalar(marbles.length)
 
-  // Limites visuelles approximatives à la profondeur de l'essaim.
   const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.position.z
   const halfWidth = halfHeight * camera.aspect
-  const edgeX = halfWidth * 0.78
-  const edgeY = halfHeight * 0.72
+  const edgeX = halfWidth * 0.79
+  const edgeY = halfHeight * 0.73
 
   for (let i = 0; i < marbles.length; i++) {
     const m = marbles[i]
@@ -181,38 +279,30 @@ function updateSwarm(dt) {
     if (m.reactionTimer <= 0) {
       updateDecision(i)
       m.reactionTimer = params.reactionMin + Math.random() * (params.reactionMax - params.reactionMin)
+      m.propagationDelay = params.propagationMin + Math.random() * (params.propagationMax - params.propagationMin)
     }
 
     m.initiativeTimer -= dt
     m.initiativeLife -= dt
-
     if (m.initiativeTimer <= 0 && Math.random() < params.initiativeRate) {
-      const forward = m.velocity.clone().normalize()
-      const side = new THREE.Vector3(-forward.y, forward.x, 0).normalize()
+      const side = new THREE.Vector3(-m.heading.y, m.heading.x, 0).normalize()
       m.initiativeDirection
         .copy(side)
-        .multiplyScalar((Math.random() - 0.5) * 1.3)
-        .add(new THREE.Vector3(0, (Math.random() - 0.5) * 0.45, 0))
+        .multiplyScalar((Math.random() - 0.5) * 1.25)
+        .add(new THREE.Vector3(0, (Math.random() - 0.5) * 0.55, (Math.random() - 0.5) * 0.16))
         .normalize()
-      m.initiativeLife = 0.30 + Math.random() * 0.65
-      m.initiativeTimer = 2.0 + Math.random() * 5.5
+      m.initiativeLife = params.initiativeLife * (0.75 + Math.random() * 0.6)
+      m.initiativeTimer = 2.5 + Math.random() * 6.0
     }
 
-    // Cohésion globale conditionnelle : rien tant que la bille reste dans le corps.
-    // Le rappel n'apparaît qu'au-delà d'un rayon large, afin d'empêcher une scission durable
-    // sans comprimer la murmuration lorsqu'elle est normalement étendue.
-    toCenter.copy(center).sub(m.mesh.position)
-    const radialDistance = Math.hypot(toCenter.x, toCenter.y)
-    if (radialDistance > params.groupRadius) {
-      const excess = radialDistance - params.groupRadius
-      const planar = tmp.set(toCenter.x, toCenter.y, 0)
-      if (planar.lengthSq() > 0.0001) {
-        planar.normalize()
-        m.velocity.addScaledVector(planar, excess * params.groupTether * dt * 60)
-      }
-    }
+    // Virage par courbure : la direction pivote progressivement vers la direction désirée.
+    const turn = 1 - Math.exp(-params.turnRate * dt)
+    m.heading.lerp(m.desiredHeading, turn).normalize()
 
-    // Bord d'écran souple : on courbe la trajectoire avant toute sortie du champ.
+    const desiredVelocity = tmp.copy(m.heading).multiplyScalar(params.speed)
+    m.velocity.lerp(desiredVelocity, 1 - Math.exp(-3.2 * dt))
+
+    // Courbure douce près des limites de l'écran.
     const x = m.mesh.position.x
     const y = m.mesh.position.y
     if (Math.abs(x) > edgeX) {
@@ -224,28 +314,18 @@ function updateSwarm(dt) {
       m.velocity.y += -Math.sign(y) * excess * params.edgeForce * dt * 60
     }
 
-    // Si le centre entier dérive, on infléchit tout le corps sans modifier ses distances internes.
-    const centerSafeX = edgeX * 0.42
-    const centerSafeY = edgeY * 0.38
-    if (Math.abs(center.x) > centerSafeX) {
-      m.velocity.x += -Math.sign(center.x) * (Math.abs(center.x) - centerSafeX) * 0.0025 * dt * 60
+    // Profondeur libre mais contenue : assez pour lire des plans distincts.
+    const depthLimit = params.depth
+    if (Math.abs(m.mesh.position.z) > depthLimit) {
+      m.velocity.z += -Math.sign(m.mesh.position.z) * (Math.abs(m.mesh.position.z) - depthLimit) * 0.025 * dt * 60
     }
-    if (Math.abs(center.y) > centerSafeY) {
-      m.velocity.y += -Math.sign(center.y) * (Math.abs(center.y) - centerSafeY) * 0.0025 * dt * 60
-    }
-
-    // La profondeur reste faible, mais non nulle.
-    m.velocity.z += -m.mesh.position.z * 0.018 * dt * 60
-    m.velocity.z *= Math.pow(0.945, dt * 60)
-
-    const minSpeed = params.speed * 0.82
-    const maxSpeed = params.speed * 1.22
-    const s = m.velocity.length()
-    if (s < minSpeed) m.velocity.setLength(minSpeed)
-    if (s > maxSpeed) m.velocity.setLength(maxSpeed)
 
     m.mesh.position.addScaledVector(m.velocity, dt * 60)
+    updateDepthCue(m)
+    recordHistory(m)
   }
+
+  applyContinuity(dt)
 }
 
 function animate() {
