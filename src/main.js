@@ -15,41 +15,28 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 app.appendChild(renderer.domElement)
 
 const params = {
-  neighbours: 7,
-  alignment: 0.055,
-  attraction: 0.014,
-  repulsion: 0.11,
-  preferredDistance: 0.82,
-  dangerDistance: 0.34,
-  speed: 0.034,
-  turnRate: 1.35,
-  initiativeRate: 0.10,
-  turnAngle: 0.78,
-  gateWidth: 0.52,
+  speed: 0.030,
+  turnRate: 1.6,
+  frameX: 3.6,
+  frameY: 2.25,
+  trailSpacing: 0.055,
+  cohesion: 0.055,
+  separation: 0.10,
+  separationDistance: 0.28,
+  lateralFreedom: 0.42,
   depth: 0.52,
-  groupRadius: 2.65,
-  groupTether: 0.012,
-  frameX: 2.65,
-  frameY: 1.85,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V11.2' })
-gui.add(params, 'neighbours', 3, 12, 1).name('Voisins suivis')
-gui.add(params, 'alignment', 0, 0.15, 0.001).name('Alignement')
-gui.add(params, 'attraction', 0, 0.04, 0.0005).name('Attraction locale')
-gui.add(params, 'repulsion', 0, 0.25, 0.002).name('Répulsion')
-gui.add(params, 'preferredDistance', 0.45, 1.4, 0.01).name('Distance confortable')
-gui.add(params, 'dangerDistance', 0.2, 0.7, 0.01).name('Distance sécurité')
-gui.add(params, 'speed', 0.015, 0.08, 0.001).name('Vitesse constante')
-gui.add(params, 'turnRate', 0.35, 2.5, 0.05).name('Fluidité virage')
-gui.add(params, 'initiativeRate', 0.02, 0.35, 0.01).name('Fréquence virage')
-gui.add(params, 'turnAngle', 0.25, 1.25, 0.01).name('Angle virage libre')
-gui.add(params, 'gateWidth', 0.15, 1.2, 0.01).name('Largeur zone virage')
+const gui = new GUI({ title: 'ENTITY — Murmuration V12' })
+gui.add(params, 'speed', 0.015, 0.06, 0.001).name('Vitesse constante')
+gui.add(params, 'turnRate', 0.4, 3.0, 0.05).name('Fluidité virage')
+gui.add(params, 'frameX', 2.4, 4.5, 0.05).name('Cadre horizontal')
+gui.add(params, 'frameY', 1.5, 3.0, 0.05).name('Cadre vertical')
+gui.add(params, 'trailSpacing', 0.025, 0.10, 0.002).name('Retard trajectoire')
+gui.add(params, 'cohesion', 0.01, 0.12, 0.002).name('Cohésion au parcours')
+gui.add(params, 'separation', 0, 0.20, 0.002).name('Séparation')
+gui.add(params, 'lateralFreedom', 0.1, 0.8, 0.02).name('Liberté latérale')
 gui.add(params, 'depth', 0.10, 1.2, 0.02).name('Profondeur')
-gui.add(params, 'groupRadius', 1.8, 4.0, 0.05).name('Rayon cohésion')
-gui.add(params, 'groupTether', 0, 0.03, 0.0005).name('Rappel groupe')
-gui.add(params, 'frameX', 1.8, 4.0, 0.05).name('Cadre horizontal')
-gui.add(params, 'frameY', 1.2, 3.0, 0.05).name('Cadre vertical')
 
 scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x20242a, 1.15))
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.6)
@@ -65,9 +52,10 @@ scene.add(lowLight)
 const geometry = new THREE.SphereGeometry(0.105, 20, 20)
 const marbles = []
 const clock = new THREE.Clock()
-let simTime = 0
-let nextTurnAt = 2.0 + Math.random() * 3.0
-let activeTurn = null
+const trail = []
+
+const leaderHeading = new THREE.Vector3(1, 0.08, 0).normalize()
+const leaderDesired = leaderHeading.clone()
 
 for (let i = 0; i < 100; i++) {
   const material = new THREE.MeshStandardMaterial({
@@ -77,228 +65,138 @@ for (let i = 0; i < 100; i++) {
   })
   const mesh = new THREE.Mesh(geometry, material)
 
-  mesh.position.set(
-    (Math.random() - 0.5) * 3.8,
-    (Math.random() - 0.5) * 1.9,
-    (Math.random() - 0.5) * params.depth
-  )
-
-  const heading = new THREE.Vector3(
-    1,
-    (Math.random() - 0.5) * 0.20,
-    (Math.random() - 0.5) * 0.06
-  ).normalize()
+  const column = i % 20
+  const row = Math.floor(i / 20)
+  const x = -2.1 + column * 0.20 + (Math.random() - 0.5) * 0.09
+  const y = (row - 2) * 0.34 + (Math.random() - 0.5) * 0.16
+  const z = (Math.random() - 0.5) * params.depth
+  mesh.position.set(x, y, z)
 
   marbles.push({
     mesh,
-    heading,
-    desiredHeading: heading.clone(),
-    hasCrossedGate: false,
+    heading: leaderHeading.clone(),
+    phase: Math.random() * Math.PI * 2,
+    trailOffset: 12 + i * 1.45,
   })
-
   scene.add(mesh)
 }
 
-const center = new THREE.Vector3()
-const avgHeading = new THREE.Vector3()
-const alignmentForce = new THREE.Vector3()
-const attractionForce = new THREE.Vector3()
-const repulsionForce = new THREE.Vector3()
+const leader = marbles[0]
+leader.trailOffset = 0
+leader.mesh.position.set(-1.5, 0, 0)
+
 const tmp = new THREE.Vector3()
 const tmp2 = new THREE.Vector3()
-const desired = new THREE.Vector3()
-const toCenter = new THREE.Vector3()
+const target = new THREE.Vector3()
+const side = new THREE.Vector3()
+const sep = new THREE.Vector3()
 
-function nearestNeighbours(index) {
-  const origin = marbles[index].mesh.position
-  const distances = []
-  for (let j = 0; j < marbles.length; j++) {
-    if (j === index) continue
-    distances.push({ j, d2: origin.distanceToSquared(marbles[j].mesh.position) })
-  }
-  distances.sort((a, b) => a.d2 - b.d2)
-  return distances.slice(0, params.neighbours)
-}
-
-function computeCenterAndHeading() {
-  center.set(0, 0, 0)
-  avgHeading.set(0, 0, 0)
-  for (const m of marbles) {
-    center.add(m.mesh.position)
-    avgHeading.add(m.heading)
-  }
-  center.divideScalar(marbles.length)
-  if (avgHeading.lengthSq() > 0.0001) avgHeading.normalize()
-}
-
-function leadingMarbleIndex() {
-  let best = -Infinity
-  let idx = 0
-  for (let i = 0; i < marbles.length; i++) {
-    const score = marbles[i].mesh.position.dot(avgHeading)
-    if (score > best) {
-      best = score
-      idx = i
-    }
-  }
-  return idx
-}
-
-function rotatePlanar(vector, angle) {
+function rotatePlanar(v, angle) {
   const c = Math.cos(angle)
   const s = Math.sin(angle)
   return new THREE.Vector3(
-    vector.x * c - vector.y * s,
-    vector.x * s + vector.y * c,
-    vector.z
+    v.x * c - v.y * s,
+    v.x * s + v.y * c,
+    v.z
   ).normalize()
 }
 
-function chooseFreeTurnDirection(leader) {
-  const sign = Math.random() < 0.5 ? -1 : 1
-  const a = rotatePlanar(avgHeading, params.turnAngle * sign)
-  const b = rotatePlanar(avgHeading, -params.turnAngle * sign)
-  const inward = tmp.copy(leader.mesh.position).multiplyScalar(-1).setZ(0)
-  if (inward.lengthSq() < 0.0001) return a
-  inward.normalize()
-  return a.dot(inward) >= b.dot(inward) ? a : b
-}
+function chooseLeaderDirection() {
+  const p = leader.mesh.position
 
-function chooseEdgeTurnDirection(leader) {
-  // Au bord, le virage n'est pas un petit écart : la tête vise franchement
-  // l'intérieur du cadre. Elle continue toujours d'avancer, mais sa trajectoire
-  // se courbe progressivement vers cette nouvelle direction.
-  const inward = new THREE.Vector3(-leader.mesh.position.x, -leader.mesh.position.y, 0)
-  if (inward.lengthSq() < 0.0001) return avgHeading.clone()
-  inward.normalize()
+  // Le leader commence à préparer son virage bien avant le bord.
+  const nearRight = p.x > params.frameX * 0.72
+  const nearLeft = p.x < -params.frameX * 0.72
+  const nearTop = p.y > params.frameY * 0.70
+  const nearBottom = p.y < -params.frameY * 0.70
 
-  // On garde un peu de la direction actuelle afin d'éviter un retournement visuel sec.
-  const candidate = avgHeading.clone().multiplyScalar(0.18).add(inward.multiplyScalar(0.82)).normalize()
-  return candidate
-}
-
-function startTurn(force = false) {
-  if (activeTurn) return
-
-  const leaderIndex = leadingMarbleIndex()
-  const leader = marbles[leaderIndex]
-
-  if (!force && Math.random() > params.initiativeRate) {
-    nextTurnAt = simTime + 0.8 + Math.random() * 1.8
+  if (nearRight || nearLeft || nearTop || nearBottom) {
+    const inward = new THREE.Vector3(-p.x, -p.y, 0).normalize()
+    leaderDesired.lerp(inward, 0.22).normalize()
     return
   }
 
-  const oldHeading = avgHeading.clone()
-  const newHeading = force ? chooseEdgeTurnDirection(leader) : chooseFreeTurnDirection(leader)
-
-  activeTurn = {
-    point: leader.mesh.position.clone(),
-    oldHeading,
-    newHeading,
-    crossedCount: 0,
-  }
-
-  for (const m of marbles) m.hasCrossedGate = false
-  leader.hasCrossedGate = true
-  leader.desiredHeading.copy(newHeading)
-  activeTurn.crossedCount = 1
-  nextTurnAt = simTime + 2.0 + Math.random() * 4.0
+  // Hors des bords : courbure lente, jamais de changement brutal.
+  const t = performance.now() * 0.001
+  const gentle = Math.sin(t * 0.58) * 0.010 + Math.sin(t * 0.23 + 1.7) * 0.006
+  leaderDesired.copy(rotatePlanar(leaderDesired, gentle))
 }
 
-function maybeStartEdgeTurn() {
-  if (activeTurn) return
-
-  const leader = marbles[leadingMarbleIndex()]
-  const p = leader.mesh.position
-
-  if (Math.abs(p.x) >= params.frameX || Math.abs(p.y) >= params.frameY) {
-    startTurn(true)
-  } else if (simTime >= nextTurnAt) {
-    startTurn(false)
-  }
+function pushTrail() {
+  trail.unshift({
+    position: leader.mesh.position.clone(),
+    heading: leader.heading.clone(),
+  })
+  if (trail.length > 650) trail.pop()
 }
 
-function updateGateState(m) {
-  if (!activeTurn || m.hasCrossedGate) return
-
-  const rel = tmp.copy(m.mesh.position).sub(activeTurn.point)
-  const longitudinal = rel.dot(activeTurn.oldHeading)
-
-  if (longitudinal >= -params.gateWidth * 0.08) {
-    m.hasCrossedGate = true
-    m.desiredHeading.copy(activeTurn.newHeading)
-    activeTurn.crossedCount++
-  }
+function trailSample(offset) {
+  if (!trail.length) return null
+  const idx = THREE.MathUtils.clamp(Math.floor(offset), 0, trail.length - 1)
+  return trail[idx]
 }
 
-function localDesiredHeading(i) {
+function updateLeader(dt) {
+  chooseLeaderDirection()
+  const turn = 1 - Math.exp(-params.turnRate * dt)
+  leader.heading.lerp(leaderDesired, turn).normalize()
+
+  const velocity = tmp.copy(leader.heading).multiplyScalar(params.speed)
+  leader.mesh.position.addScaledVector(velocity, dt * 60)
+
+  // Sécurité dure uniquement pour empêcher toute sortie numérique.
+  leader.mesh.position.x = THREE.MathUtils.clamp(leader.mesh.position.x, -params.frameX, params.frameX)
+  leader.mesh.position.y = THREE.MathUtils.clamp(leader.mesh.position.y, -params.frameY, params.frameY)
+
+  pushTrail()
+}
+
+function updateFollower(i, dt, elapsed) {
   const m = marbles[i]
-  const neighbours = nearestNeighbours(i)
+  const sample = trailSample(m.trailOffset)
+  if (!sample) return
 
-  alignmentForce.set(0, 0, 0)
-  attractionForce.set(0, 0, 0)
-  repulsionForce.set(0, 0, 0)
+  // La bille suit la même route que celles qui la précèdent : le virage est donc
+  // rencontré au même endroit du parcours, mais plus tard.
+  side.set(-sample.heading.y, sample.heading.x, 0).normalize()
+  const lateral = Math.sin(m.phase + elapsed * 0.55) * params.lateralFreedom
+  const vertical = Math.sin(m.phase * 1.73 + elapsed * 0.37) * params.depth * 0.32
 
-  let meanDistance = 0
+  target.copy(sample.position)
+  target.addScaledVector(side, lateral)
+  target.z += vertical
 
-  for (const n of neighbours) {
-    const other = marbles[n.j]
-    const distance = Math.sqrt(n.d2)
-    meanDistance += distance
+  const toTarget = tmp.copy(target).sub(m.mesh.position)
+  const distance = toTarget.length()
+  if (distance > 0.0001) toTarget.normalize()
 
-    if (!activeTurn || m.hasCrossedGate === other.hasCrossedGate) {
-      alignmentForce.add(other.heading)
-    }
+  // Cohésion au parcours, sans marche arrière.
+  const desired = tmp2.copy(sample.heading)
+  desired.lerp(toTarget, THREE.MathUtils.clamp(distance * params.cohesion, 0, 0.42)).normalize()
 
-    tmp.copy(other.mesh.position).sub(m.mesh.position)
-    if (distance < params.dangerDistance && distance > 0.0001) {
-      const pressure = 1 - distance / params.dangerDistance
-      repulsionForce.add(tmp2.copy(tmp).normalize().multiplyScalar(-pressure))
-    }
-  }
-
-  meanDistance /= Math.max(neighbours.length, 1)
-
-  if (neighbours.length) {
-    if (alignmentForce.lengthSq() > 0.0001) alignmentForce.normalize()
-
-    if (meanDistance > params.preferredDistance) {
-      for (const n of neighbours) attractionForce.add(marbles[n.j].mesh.position)
-      attractionForce.divideScalar(neighbours.length).sub(m.mesh.position)
-      if (attractionForce.lengthSq() > 0.0001) attractionForce.normalize()
+  // Séparation locale uniquement, assez faible pour ne jamais casser le groupe.
+  sep.set(0, 0, 0)
+  for (let j = 0; j < marbles.length; j++) {
+    if (j === i) continue
+    const other = marbles[j]
+    const d = m.mesh.position.distanceTo(other.mesh.position)
+    if (d > 0.0001 && d < params.separationDistance) {
+      sep.add(tmp.copy(m.mesh.position).sub(other.mesh.position).normalize().multiplyScalar(1 - d / params.separationDistance))
     }
   }
-
-  const base = activeTurn
-    ? (m.hasCrossedGate ? activeTurn.newHeading : activeTurn.oldHeading)
-    : m.heading
-
-  desired.copy(base)
-  desired.addScaledVector(alignmentForce, params.alignment)
-  desired.addScaledVector(attractionForce, params.attraction)
-  desired.addScaledVector(repulsionForce, params.repulsion)
-
-  if (desired.lengthSq() > 0.0001) desired.normalize()
-  if (desired.dot(m.heading) < 0.12) {
-    desired.lerp(m.heading, 0.72).normalize()
+  if (sep.lengthSq() > 0.0001) {
+    sep.normalize().multiplyScalar(params.separation)
+    desired.add(sep).normalize()
   }
 
-  m.desiredHeading.copy(desired)
-}
+  // Jamais immobile et jamais en marche arrière.
+  if (desired.dot(m.heading) < 0.18) desired.lerp(m.heading, 0.78).normalize()
 
-function applySoftCohesion(m, dt) {
-  toCenter.copy(center).sub(m.mesh.position)
-  const radialDistance = Math.hypot(toCenter.x, toCenter.y)
-  if (radialDistance <= params.groupRadius) return
+  const turn = 1 - Math.exp(-params.turnRate * dt)
+  m.heading.lerp(desired, turn).normalize()
 
-  const excess = radialDistance - params.groupRadius
-  const inward = tmp.set(toCenter.x, toCenter.y, 0)
-  if (inward.lengthSq() < 0.0001) return
-  inward.normalize()
-
-  const correction = Math.min(excess * params.groupTether * dt * 60, 0.08)
-  const candidate = tmp2.copy(m.desiredHeading).lerp(inward, correction).normalize()
-  if (candidate.dot(m.heading) > 0.10) m.desiredHeading.copy(candidate)
+  const velocity = tmp.copy(m.heading).multiplyScalar(params.speed)
+  m.mesh.position.addScaledVector(velocity, dt * 60)
 }
 
 function updateDepthCue(m) {
@@ -309,43 +207,20 @@ function updateDepthCue(m) {
   m.mesh.material.color.setHSL(0.60, 0.05, lightness)
 }
 
-function updateSwarm(dt) {
-  simTime += dt
-  computeCenterAndHeading()
-  maybeStartEdgeTurn()
+function updateSwarm(dt, elapsed) {
+  updateLeader(dt)
 
-  for (let i = 0; i < marbles.length; i++) {
-    const m = marbles[i]
-
-    updateGateState(m)
-    localDesiredHeading(i)
-    applySoftCohesion(m, dt)
-
-    const turn = 1 - Math.exp(-params.turnRate * dt)
-    m.heading.lerp(m.desiredHeading, turn).normalize()
-
-    // Toujours en mouvement, toujours vers l'avant, vitesse strictement positive.
-    const velocity = tmp.copy(m.heading).multiplyScalar(params.speed)
-
-    if (Math.abs(m.mesh.position.z) > params.depth) {
-      const zCorrection = -Math.sign(m.mesh.position.z) * 0.10
-      velocity.z += zCorrection * params.speed
-      if (velocity.lengthSq() > 0.0001) velocity.setLength(params.speed)
-    }
-
-    m.mesh.position.addScaledVector(velocity, dt * 60)
-    updateDepthCue(m)
+  for (let i = 1; i < marbles.length; i++) {
+    updateFollower(i, dt, elapsed)
   }
 
-  if (activeTurn && activeTurn.crossedCount >= marbles.length) {
-    activeTurn = null
-  }
+  for (const m of marbles) updateDepthCue(m)
 }
 
 function animate() {
   requestAnimationFrame(animate)
   const dt = Math.min(clock.getDelta(), 1 / 30)
-  updateSwarm(dt)
+  updateSwarm(dt, clock.elapsedTime)
   renderer.render(scene, camera)
 }
 animate()
