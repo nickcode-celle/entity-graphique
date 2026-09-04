@@ -69,14 +69,14 @@ const err=gpuCompute.init();if(err!==null)throw new Error(err)
 
 const base=new THREE.SphereGeometry(3.2,16,12), geo=new THREE.InstancedBufferGeometry();geo.index=base.index;geo.setAttribute('position',base.getAttribute('position'));geo.setAttribute('normal',base.getAttribute('normal'));geo.setAttribute('uv',base.getAttribute('uv'));geo.instanceCount=BIRDS
 const refs=new Float32Array(BIRDS*2);for(let i=0;i<BIRDS;i++){refs[i*2]=(i%WIDTH+.5)/WIDTH;refs[i*2+1]=(Math.floor(i/WIDTH)+.5)/HEIGHT}geo.setAttribute('reference',new THREE.InstancedBufferAttribute(refs,2))
-const su={texturePosition:{value:null}}
-const mat=new THREE.ShaderMaterial({uniforms:su,vertexShader:`attribute vec2 reference;uniform sampler2D texturePosition;varying vec3 vNormal;varying float vDepth;void main(){vec3 c=texture2D(texturePosition,reference).xyz;vec3 w=c+position;vNormal=normalize(normalMatrix*normal);vDepth=w.z;gl_Position=projectionMatrix*viewMatrix*vec4(w,1.);}`,fragmentShader:`varying vec3 vNormal;varying float vDepth;void main(){vec3 l=normalize(vec3(.4,.7,.6));float d=.42+max(dot(vNormal,l),0.)*.58;float z=clamp((vDepth+400.)/800.,0.,1.);gl_FragColor=vec4(vec3(d*mix(.68,1.,z)),1.);}`})
+const su={texturePosition:{value:null},marbleScale:{value:1}}
+const mat=new THREE.ShaderMaterial({uniforms:su,vertexShader:`attribute vec2 reference;uniform sampler2D texturePosition;uniform float marbleScale;varying vec3 vNormal;varying float vDepth;void main(){vec3 c=texture2D(texturePosition,reference).xyz;vec3 w=c+position*marbleScale;vNormal=normalize(normalMatrix*normal);vDepth=w.z;gl_Position=projectionMatrix*viewMatrix*vec4(w,1.);}`,fragmentShader:`varying vec3 vNormal;varying float vDepth;void main(){vec3 l=normalize(vec3(.4,.7,.6));float d=.42+max(dot(vNormal,l),0.)*.58;float z=clamp((vDepth+400.)/800.,0.,1.);gl_FragColor=vec4(vec3(d*mix(.68,1.,z)),1.);}`})
 scene.add(new THREE.Mesh(geo,mat))
 
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
-const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value})
+const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850,TAILLE:1}
+const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value});gui.add(controls,'TAILLE',.25,3,.05).name('TAILLE BILLES').onChange(value=>{su.marbleScale.value=value})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
