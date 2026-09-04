@@ -4,12 +4,16 @@ import './style.css'
 // ENTITY — ColT reference port
 // Faithful browser port of the CURRENT marinapapa/ColT-Model configuration.
 // No invented flocking weights. First validation uses the source configuration: 30 starlings + 1 predator, 2D, dt=0.005 s.
+// Diagnostic only: at t=5 s, exactly ONE starling is forced into the published ColT escape-turn state.
+// After that, propagation is left entirely to ColT's copy_escape mechanism.
 
 const DT = 0.005
 const N = 30
 const FOV_COS = Math.cos(THREE.MathUtils.degToRad(135)) // 270° FOV
 const MAXDIST2 = 200 * 200
 const FLOCK_THRESHOLD = 10
+const FORCED_TURN_AT = 5
+const FORCED_TURN_INDEX = 0
 
 const STAR = {
   mass: 0.45, minSpeed: 5, maxSpeed: 20,
@@ -85,6 +89,7 @@ const predator = {
 }
 
 let simTime=0, accumulator=0, last=performance.now()
+let forcedTurnDone=false
 
 function sortedStarNeighbours(i) {
   const s=starlings[i]
@@ -278,6 +283,10 @@ function integrateAll() {
 }
 
 function physicsStep(){
+  if(!forcedTurnDone && simTime>=FORCED_TURN_AT){
+    enterStarState(FORCED_TURN_INDEX,2,simTime)
+    forcedTurnDone=true
+  }
   for(let i=0;i<N;i++)if(starlings[i].nextUpdate<=simTime+1e-12)starUpdate(i)
   if(predator.nextUpdate<=simTime+1e-12)predUpdate()
   integrateAll(); simTime+=DT
@@ -286,14 +295,21 @@ function physicsStep(){
 const centroid=v(), camTarget=v()
 function render(){
   centroid.set(0,0,0); for(const s of starlings)centroid.add(s.pos); centroid.multiplyScalar(1/N)
-  for(const s of starlings)s.mesh.position.copy(s.pos).sub(centroid)
+  for(let i=0;i<N;i++){
+    const s=starlings[i]
+    s.mesh.position.copy(s.pos).sub(centroid)
+    if(s.state===2) s.mesh.material.color.set(i===FORCED_TURN_INDEX ? 0xffb347 : 0xffe08a)
+    else if(s.state===1) s.mesh.material.color.set(0xb8c7ff)
+    else s.mesh.material.color.set(0xf4f5f6)
+  }
   predator.mesh.position.copy(predator.pos).sub(centroid)
   camTarget.set(0,0,0); camera.lookAt(camTarget)
 
   const turning=starlings.filter(s=>s.state===2).length
   const penalty=starlings.filter(s=>s.state===1).length
   const predName=['retreat','shadowing','chase','hold'][predator.state]
-  label.textContent=`ColT-Model original config — 30 étourneaux + 1 prédateur | t=${simTime.toFixed(1)} s | virage=${turning} | pénalité=${penalty} | prédateur=${predName}`
+  const testState=forcedTurnDone ? 'déclenché' : `dans ${(FORCED_TURN_AT-simTime).toFixed(1)} s`
+  label.textContent=`ColT copy_escape TEST — 30 étourneaux + 1 prédateur | t=${simTime.toFixed(1)} s | virage=${turning} | pénalité=${penalty} | test=${testState} | prédateur=${predName}`
   renderer.render(scene,camera)
 }
 
