@@ -29,10 +29,10 @@ const params = {
   depth: 0.52,
   groupRadius: 3.55,
   groupTether: 0.010,
-  edgeMargin: 0.64,
+  edgeMargin: 0.48,
 }
 
-const gui = new GUI({ title: 'ENTITY — Murmuration V11' })
+const gui = new GUI({ title: 'ENTITY — Murmuration V11.1' })
 gui.add(params, 'neighbours', 3, 12, 1).name('Voisins suivis')
 gui.add(params, 'alignment', 0, 0.15, 0.001).name('Alignement')
 gui.add(params, 'attraction', 0, 0.04, 0.0005).name('Attraction locale')
@@ -47,7 +47,7 @@ gui.add(params, 'gateWidth', 0.15, 1.2, 0.01).name('Largeur zone virage')
 gui.add(params, 'depth', 0.10, 1.2, 0.02).name('Profondeur')
 gui.add(params, 'groupRadius', 2.4, 5.0, 0.05).name('Rayon cohésion')
 gui.add(params, 'groupTether', 0, 0.03, 0.0005).name('Rappel groupe')
-gui.add(params, 'edgeMargin', 0.45, 0.82, 0.01).name('Marge écran')
+gui.add(params, 'edgeMargin', 0.30, 0.65, 0.01).name('Cadre de vol')
 
 scene.add(new THREE.HemisphereLight(0xf4f6ff, 0x20242a, 1.15))
 const keyLight = new THREE.DirectionalLight(0xffffff, 2.6)
@@ -76,8 +76,8 @@ for (let i = 0; i < 100; i++) {
   const mesh = new THREE.Mesh(geometry, material)
 
   mesh.position.set(
-    (Math.random() - 0.5) * 6.5,
-    (Math.random() - 0.5) * 2.8,
+    (Math.random() - 0.5) * 5.6,
+    (Math.random() - 0.5) * 2.4,
     (Math.random() - 0.5) * params.depth
   )
 
@@ -161,7 +161,6 @@ function chooseTurnDirection(leader) {
   const p = leader.mesh.position
   let sign = Math.random() < 0.5 ? -1 : 1
 
-  // Près d'un bord, choisir obligatoirement le sens qui ramène l'essaim vers l'intérieur.
   if (p.x > safeX) sign = avgHeading.y >= 0 ? 1 : -1
   if (p.x < -safeX) sign = avgHeading.y >= 0 ? -1 : 1
   if (p.y > safeY) sign = avgHeading.x >= 0 ? -1 : 1
@@ -170,7 +169,6 @@ function chooseTurnDirection(leader) {
   const candidateA = rotatePlanar(avgHeading, params.turnAngle * sign)
   const candidateB = rotatePlanar(avgHeading, -params.turnAngle * sign)
 
-  // Parmi les deux possibilités, garder celle qui pointe le plus vers le centre de l'écran.
   const inward = tmp.copy(leader.mesh.position).multiplyScalar(-1).setZ(0)
   if (inward.lengthSq() > 0.0001) inward.normalize()
   return candidateA.dot(inward) >= candidateB.dot(inward) ? candidateA : candidateB
@@ -221,12 +219,9 @@ function maybeStartEdgeTurn() {
 function updateGateState(m) {
   if (!activeTurn || m.hasCrossedGate) return
 
-  // Une bille change de direction seulement lorsqu'elle atteint le même niveau spatial
-  // que le point où la bille de tête a changé de direction.
   const rel = tmp.copy(m.mesh.position).sub(activeTurn.point)
   const longitudinal = rel.dot(activeTurn.oldHeading)
 
-  // Petite bande autour du plan de passage pour éviter les déclenchements numériques secs.
   if (longitudinal >= -params.gateWidth * 0.08) {
     m.hasCrossedGate = true
     m.desiredHeading.copy(activeTurn.newHeading)
@@ -249,8 +244,6 @@ function localDesiredHeading(i) {
     const distance = Math.sqrt(n.d2)
     meanDistance += distance
 
-    // Pendant un virage spatial, une bille qui n'a pas encore atteint la zone de virage
-    // n'imite pas prématurément une voisine déjà tournée.
     if (!activeTurn || m.hasCrossedGate === other.hasCrossedGate) {
       alignmentForce.add(other.heading)
     }
@@ -283,8 +276,6 @@ function localDesiredHeading(i) {
   desired.addScaledVector(attractionForce, params.attraction)
   desired.addScaledVector(repulsionForce, params.repulsion)
 
-  // Interdiction de reculer : la direction désirée doit toujours garder une composante
-  // positive par rapport à la direction de déplacement actuelle.
   if (desired.lengthSq() > 0.0001) desired.normalize()
   if (desired.dot(m.heading) < 0.12) {
     desired.lerp(m.heading, 0.72).normalize()
@@ -303,7 +294,6 @@ function applySoftCohesion(m, dt) {
   if (inward.lengthSq() < 0.0001) return
   inward.normalize()
 
-  // La cohésion infléchit la direction, elle ne pousse jamais la bille en arrière.
   const correction = Math.min(excess * params.groupTether * dt * 60, 0.08)
   const candidate = tmp2.copy(m.desiredHeading).lerp(inward, correction).normalize()
   if (candidate.dot(m.heading) > 0.10) m.desiredHeading.copy(candidate)
@@ -329,14 +319,11 @@ function updateSwarm(dt) {
     localDesiredHeading(i)
     applySoftCohesion(m, dt)
 
-    // Virage progressif : jamais de demi-tour instantané.
     const turn = 1 - Math.exp(-params.turnRate * dt)
     m.heading.lerp(m.desiredHeading, turn).normalize()
 
-    // La bille vole TOUJOURS vers l'avant, à vitesse strictement positive et constante.
     const velocity = tmp.copy(m.heading).multiplyScalar(params.speed)
 
-    // Profondeur contenue sans arrêt ni marche arrière.
     if (Math.abs(m.mesh.position.z) > params.depth) {
       const zCorrection = -Math.sign(m.mesh.position.z) * 0.10
       velocity.z += zCorrection * params.speed
