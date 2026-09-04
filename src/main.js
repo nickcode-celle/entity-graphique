@@ -2,18 +2,15 @@ import * as THREE from 'three'
 import GUI from 'lil-gui'
 import './style.css'
 
-// ENTITY — REFERENCE-1
-// Normal flocking reference based on the published StarEscape structure:
-// asynchronous perception -> social steering forces -> acceleration -> velocity -> position.
-// No leader, no shared path, no screen-edge steering, no global reconnect force.
+// ENTITY — STARESCAPE PORT 1
+// Literal port of the published StarEscape normal-flocking regime.
+// Simulation stays in StarEscape units; only rendering is rescaled.
 
 const app = document.querySelector('#app')
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x16181b)
 
-const camera = new THREE.PerspectiveCamera(52, window.innerWidth / window.innerHeight, 0.1, 200)
-camera.position.set(0, 0, 18)
-
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 500)
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -32,77 +29,96 @@ scene.add(lowLight)
 
 const REF = Object.freeze({
   N: 100,
-  physicsDt: 0.001,
-  reactionTime: 0.050,
-  neighbours: 7,
-  avoidNeighbours: 1,
+  dt: 0.001,
+  reactionTime: 0.05,
+  firstUpdateWindow: 1.0,
+  topo: 7,
+  avoidTopo: 1,
   fovDeg: 270,
+  maxDist: 200,
   bodyMass: 0.08,
   cruiseSpeed: 9,
   minSpeed: 5,
   maxSpeed: 15,
+  cruiseWeight: 0.5,
+  betaIn: THREE.MathUtils.degToRad(120),
   alignWeight: 0.5,
   cohesionWeight: 1.5,
+  cohesionMinDistance: 0,
+  cohesionMaxDistance: 5,
   avoidWeight: 0.5,
-  avoidDistance: 0.8,
-  cohesionFullDistance: 5,
-  wiggleWeight: 0.1,
-  roostWeight: 0.25,
+  minSep: 0.8,
   roostRadius: 100,
+  roostX: 50,
+  roostZ: 100,
+  roostWeight: 0.25,
+  altitudePreferred: 0,
+  altitudeSmoothRange: 200,
+  altitudeMaxPitchDeg: 45,
   altitudeWeight: 0.1,
+  levelMaxPitchDeg: 45,
   levelWeight: 0.1,
-  initialRadius: 10,
-  initialDirectionDeviationDeg: 0.001,
+  wiggleWeight: 0.1,
+  initRadius: 10,
+  initAltitude: 0,
+  initDir: new THREE.Vector3(1, 0, 0),
+  initDegDev: 0.001,
 })
 
 const view = {
-  simToView: 0.42,
-  cameraFollow: 3.2,
-  showMetrics: true,
+  simScale: 0.48,
+  cameraDistance: 25,
+  cameraHeight: 16,
+  follow: 4.0,
 }
 
-const gui = new GUI({ title: 'ENTITY — REFERENCE-1' })
-gui.add(view, 'simToView', 0.25, 0.65, 0.01).name('Échelle visuelle')
-gui.add(view, 'cameraFollow', 0.5, 8, 0.1).name('Suivi caméra')
-gui.add(view, 'showMetrics').name('Mesures')
+const gui = new GUI({ title: 'ENTITY — StarEscape Port 1' })
+gui.add(view, 'simScale', 0.25, 0.8, 0.01).name('Échelle visuelle')
+gui.add(view, 'cameraDistance', 12, 50, 1).name('Distance caméra')
+gui.add(view, 'cameraHeight', 4, 35, 1).name('Hauteur caméra')
+gui.add(view, 'follow', 0.5, 10, 0.1).name('Suivi caméra')
 
-const metrics = {
+const diagnostics = {
   polarisation: '—',
-  vitesseMoy: '—',
+  vitesse: '—',
   ecartVitesse: '—',
-  voisinProche: '—',
+  nnd: '—',
   composantes: '—',
 }
-const mf = gui.addFolder('Diagnostic')
-mf.add(metrics, 'polarisation').listen().disable()
-mf.add(metrics, 'vitesseMoy').listen().disable()
-mf.add(metrics, 'ecartVitesse').listen().disable()
-mf.add(metrics, 'voisinProche').listen().disable()
-mf.add(metrics, 'composantes').listen().disable()
+const folder = gui.addFolder('Diagnostic')
+folder.add(diagnostics, 'polarisation').listen().disable()
+folder.add(diagnostics, 'vitesse').listen().disable()
+folder.add(diagnostics, 'ecartVitesse').listen().disable()
+folder.add(diagnostics, 'nnd').listen().disable()
+folder.add(diagnostics, 'composantes').listen().disable()
 
 const geometry = new THREE.SphereGeometry(0.105, 20, 20)
-const material = new THREE.MeshStandardMaterial({
+const baseMaterial = new THREE.MeshStandardMaterial({
   color: 0xf1f3f5,
   roughness: 0.32,
   metalness: 0.04,
 })
 
 const agents = []
-const Y_AXIS = new THREE.Vector3(0, 1, 0)
-const X_AXIS = new THREE.Vector3(1, 0, 0)
-const tmpA = new THREE.Vector3()
-const tmpB = new THREE.Vector3()
-const tmpC = new THREE.Vector3()
+const Y = new THREE.Vector3(0, 1, 0)
+const Z = new THREE.Vector3(0, 0, 1)
+const tmp1 = new THREE.Vector3()
+const tmp2 = new THREE.Vector3()
+const tmp3 = new THREE.Vector3()
 const centroid = new THREE.Vector3()
 const cameraTarget = new THREE.Vector3()
-const renderOffset = new THREE.Vector3()
+const cameraPos = new THREE.Vector3()
 
 function smootherstep(x, edge0, edge1) {
   const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1)
   return t * t * t * (t * (t * 6 - 15) + 10)
 }
 
-function randomNormal() {
+function smootherstepBipolar(x, edge0, edge1) {
+  return -1 + 2 * smootherstep(x, edge0, edge1)
+}
+
+function gaussian() {
   let u = 0
   let v = 0
   while (u === 0) u = Math.random()
@@ -110,180 +126,236 @@ function randomNormal() {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
-function makeLocalFrame(forward, previousUp = Y_AXIS) {
-  const f = forward.clone().normalize()
-  let side = new THREE.Vector3().crossVectors(f, previousUp)
-  if (side.lengthSq() < 1e-8) side.crossVectors(f, new THREE.Vector3(0, 0, 1))
+function safeNormalize(v, fallback) {
+  const l2 = v.lengthSq()
+  if (l2 > 1e-12 && Number.isFinite(l2)) return v.multiplyScalar(1 / Math.sqrt(l2))
+  return v.copy(fallback)
+}
+
+function buildHead(direction, position) {
+  const forward = direction.clone().normalize()
+  const side = new THREE.Vector3().crossVectors(Y, forward)
+  if (side.lengthSq() < 1e-12) side.crossVectors(Z, forward)
   side.normalize()
-  const up = new THREE.Vector3().crossVectors(side, f).normalize()
-  return { forward: f, side, up }
+  const up = new THREE.Vector3().crossVectors(forward, side).normalize()
+  return {
+    forward,
+    up,
+    side,
+    position: position.clone(),
+    beta: 0,
+    previousVelocity: forward.clone().multiplyScalar(REF.cruiseSpeed),
+  }
 }
 
 function initialise() {
-  const dev = THREE.MathUtils.degToRad(REF.initialDirectionDeviationDeg)
-
+  const dev = THREE.MathUtils.degToRad(REF.initDegDev)
   for (let i = 0; i < REF.N; i++) {
-    const mesh = new THREE.Mesh(geometry, material.clone())
+    const mesh = new THREE.Mesh(geometry, baseMaterial.clone())
     scene.add(mesh)
 
-    // StarEscape 'flock' initial condition: random positions in a cube,
-    // almost identical initial headings and common cruise speed.
+    // Exact StarEscape in_flock geometry: [0,radius]^3 + altitude on y.
     const position = new THREE.Vector3(
-      Math.random() * REF.initialRadius,
-      Math.random() * REF.initialRadius,
-      Math.random() * REF.initialRadius
+      Math.random() * REF.initRadius,
+      Math.random() * REF.initRadius + REF.initAltitude,
+      Math.random() * REF.initRadius
     )
-    position.subScalar(REF.initialRadius * 0.5)
 
-    const yaw = randomNormal() * dev
-    const direction = X_AXIS.clone().applyAxisAngle(Y_AXIS, yaw).normalize()
-    const velocity = direction.clone().multiplyScalar(REF.cruiseSpeed)
-    const frame = makeLocalFrame(direction)
+    const yaw = gaussian() * dev
+    const direction = REF.initDir.clone().applyAxisAngle(Y, yaw).normalize()
+    const head = buildHead(direction, position)
 
     agents.push({
       mesh,
       position,
-      velocity,
+      direction,
+      speed: REF.cruiseSpeed,
       acceleration: new THREE.Vector3(),
       steering: new THREE.Vector3(),
-      frame,
-      speed: REF.cruiseSpeed,
-      // Same 50 ms period, one stable asynchronous phase chosen once.
-      nextReaction: Math.random() * REF.reactionTime,
-      lastNeighbours: [],
+      head,
+      cruiseWeight: 0, // StarEscape keeps this at zero until first state resume/update.
+      nextUpdate: Math.floor(Math.random() * (REF.firstUpdateWindow / REF.dt + 1)) * REF.dt,
+      neighbours: [],
     })
   }
 }
 initialise()
 
-const cosHalfFov = Math.cos(THREE.MathUtils.degToRad(REF.fovDeg * 0.5))
+const cfov = Math.cos(
+  THREE.MathUtils.degToRad(180 - 0.5 * (360 - REF.fovDeg))
+)
+const maxDist2 = REF.maxDist * REF.maxDist
+const minSep2 = REF.minSep * REF.minSep
+const roostRadius2 = REF.roostRadius * REF.roostRadius
+const maxPitchY = Math.sin(THREE.MathUtils.degToRad(REF.altitudeMaxPitchDeg))
+const levelMaxY = Math.sin(THREE.MathUtils.degToRad(REF.levelMaxPitchDeg))
+const levelMinSmooth = Math.sin(THREE.MathUtils.degToRad(3))
 
-function inFov(agent, other) {
-  tmpA.copy(other.position).sub(agent.position)
-  const len2 = tmpA.lengthSq()
-  if (len2 < 1e-10) return true
-  tmpA.multiplyScalar(1 / Math.sqrt(len2))
-  return agent.frame.forward.dot(tmpA) >= cosHalfFov
-}
-
-function sortedVisibleNeighbours(index) {
+function sortedNeighbours(index) {
   const self = agents[index]
   const list = []
   for (let j = 0; j < REF.N; j++) {
     if (j === index) continue
-    const other = agents[j]
-    const d2 = self.position.distanceToSquared(other.position)
-    if (inFov(self, other)) list.push({ index: j, d2 })
+    list.push({ index: j, d2: self.position.distanceToSquared(agents[j].position) })
   }
   list.sort((a, b) => a.d2 - b.d2)
   return list
 }
 
-function behaviouralUpdate(index) {
-  const self = agents[index]
-  const visible = sortedVisibleNeighbours(index)
-  const social = visible.slice(0, REF.neighbours)
-  self.lastNeighbours = social.map(n => n.index)
-  self.steering.set(0, 0, 0)
-
-  // Alignment: normalized sum of the headings of the topological neighbours.
-  tmpA.set(0, 0, 0)
-  for (const n of social) tmpA.add(agents[n.index].frame.forward)
-  if (tmpA.lengthSq() > 1e-10) {
-    tmpA.normalize().multiplyScalar(REF.alignWeight)
-    self.steering.add(tmpA)
-  }
-
-  // Cohesion: direction to the local centroid; magnitude rises smoothly
-  // with distance to that centroid and reaches the published maximum at 5 m.
-  if (social.length) {
-    tmpA.set(0, 0, 0)
-    for (const n of social) tmpA.add(agents[n.index].position)
-    tmpA.multiplyScalar(1 / social.length)
-    tmpB.copy(tmpA).sub(self.position)
-    const d = tmpB.length()
-    if (d > 1e-8) {
-      const w = REF.cohesionWeight * smootherstep(d, 0, REF.cohesionFullDistance)
-      self.steering.add(tmpB.multiplyScalar(w / d))
-    }
-  }
-
-  // Avoidance: closest visible neighbour only.
-  const closest = visible[0]
-  if (closest && closest.d2 < REF.avoidDistance * REF.avoidDistance) {
-    tmpA.copy(self.position).sub(agents[closest.index].position)
-    if (tmpA.lengthSq() > 1e-10) self.steering.add(tmpA.normalize().multiplyScalar(REF.avoidWeight))
-  }
-
-  // Roost analogue in simulation units: weak horizontal return outside radius.
-  // It is a territory field, never a screen-edge bounce.
-  const horizontalR = Math.hypot(self.position.x, self.position.z)
-  if (horizontalR > REF.roostRadius) {
-    const excess = smootherstep(horizontalR, REF.roostRadius, REF.roostRadius * 1.35)
-    tmpA.set(-self.position.x, 0, -self.position.z)
-    if (tmpA.lengthSq() > 1e-10) self.steering.add(tmpA.normalize().multiplyScalar(REF.roostWeight * excess))
-  }
-
-  // Very weak altitude tendency. It acts independently of horizontal territory.
-  // We keep the reference flock centred around altitude y=0 for the visual test.
-  const alt = Math.abs(self.position.y)
-  if (alt > REF.initialRadius * 0.55) {
-    const aw = smootherstep(alt, REF.initialRadius * 0.55, REF.initialRadius * 1.5)
-    self.steering.y += -Math.sign(self.position.y) * REF.altitudeWeight * aw
-  }
-
-  // Published wiggle principle: a small random lateral force in the agent's
-  // own local frame, sampled only at behavioural updates.
-  const wiggle = THREE.MathUtils.lerp(-REF.wiggleWeight, REF.wiggleWeight, Math.random())
-  self.steering.addScaledVector(self.frame.side, wiggle)
+function inFov(self, other, d2) {
+  if (d2 === 0 || d2 >= maxDist2) return false
+  tmp1.copy(other.position).sub(self.position)
+  safeNormalize(tmp1, self.direction)
+  return self.direction.dot(tmp1) > cfov
 }
 
-function integrateAgent(a, dt) {
-  // Cruise-speed control is a force, not a hard speed assignment.
-  const speed = a.velocity.length()
-  const cruiseForce = (REF.cruiseSpeed - speed) * REF.bodyMass
-  tmpA.copy(a.velocity)
-  if (tmpA.lengthSq() < 1e-10) tmpA.copy(a.frame.forward)
-  else tmpA.normalize()
-
-  tmpB.copy(a.steering).addScaledVector(tmpA, cruiseForce)
-  a.acceleration.copy(tmpB).multiplyScalar(1 / REF.bodyMass)
-
-  // Midpoint integration: acceleration bends the existing velocity instead
-  // of replacing its direction.
-  tmpC.copy(a.velocity).addScaledVector(a.acceleration, dt * 0.5)
-  a.position.addScaledVector(tmpC, dt)
-  a.velocity.addScaledVector(a.acceleration, dt)
-
-  let newSpeed = a.velocity.length()
-  if (!Number.isFinite(newSpeed) || newSpeed < 1e-8) {
-    a.velocity.copy(a.frame.forward).multiplyScalar(REF.minSpeed)
-    newSpeed = REF.minSpeed
+function topological(index, topo, predicate) {
+  const self = agents[index]
+  const sorted = sortedNeighbours(index)
+  const selected = []
+  for (const ni of sorted) {
+    if (selected.length >= topo) break
+    const other = agents[ni.index]
+    if (predicate(self, other, ni)) selected.push(ni)
   }
-  if (newSpeed < REF.minSpeed) a.velocity.multiplyScalar(REF.minSpeed / newSpeed)
-  else if (newSpeed > REF.maxSpeed) a.velocity.multiplyScalar(REF.maxSpeed / newSpeed)
+  return selected
+}
 
-  a.speed = a.velocity.length()
-  a.frame = makeLocalFrame(a.velocity, a.frame.up)
+function behaviouralUpdate(index) {
+  const self = agents[index]
+  self.steering.set(0, 0, 0)
+  self.cruiseWeight = REF.cruiseWeight
+
+  // align_n: scan distance-sorted neighbours until 7 valid FOV neighbours are found.
+  const alignN = topological(index, REF.topo, (s, o, ni) => inFov(s, o, ni.d2))
+  tmp1.set(0, 0, 0)
+  for (const ni of alignN) tmp1.add(agents[ni.index].direction)
+  if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(REF.alignWeight))
+
+  // cohere_centroid_distance: same topological search, magnitude set by distance to local centroid.
+  const cohN = topological(index, REF.topo, (s, o, ni) => inFov(s, o, ni.d2))
+  tmp1.set(0, 0, 0)
+  for (const ni of cohN) tmp1.add(tmp2.copy(agents[ni.index].position).sub(self.position))
+  if (cohN.length) {
+    const centroidOffset = tmp1.clone().multiplyScalar(1 / cohN.length)
+    const d = centroidOffset.length()
+    const w = REF.cohesionWeight * smootherstep(d, REF.cohesionMinDistance, REF.cohesionMaxDistance)
+    if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(w))
+  }
+
+  // avoid_n_position: find the first visible neighbour inside minSep.
+  const avoidN = topological(index, REF.avoidTopo, (s, o, ni) => inFov(s, o, ni.d2) && ni.d2 < minSep2)
+  tmp1.set(0, 0, 0)
+  for (const ni of avoidN) tmp1.add(tmp2.copy(self.position).sub(agents[ni.index].position))
+  if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(REF.avoidWeight))
+
+  // roost_attraction: exact published plane field in x/z.
+  const dx = REF.roostX - self.position.x
+  const dz = REF.roostZ - self.position.z
+  const r2 = dx * dx + dz * dz
+  const rw = REF.roostWeight * smootherstep(r2, roostRadius2, 500000)
+  if (r2 > 1e-12 && rw !== 0) {
+    const inv = 1 / Math.sqrt(r2)
+    self.steering.x += dx * inv * rw
+    self.steering.z += dz * inv * rw
+  }
+
+  // altitude_attraction: exact smootherstep-bipolar target and local up axis.
+  const altDev = self.position.y - REF.altitudePreferred
+  const desiredY = -maxPitchY * smootherstepBipolar(
+    altDev,
+    -REF.altitudeSmoothRange,
+    REF.altitudeSmoothRange
+  )
+  self.steering.addScaledVector(
+    self.head.up,
+    REF.altitudeWeight * (desiredY - self.direction.y)
+  )
+
+  // level_attraction: separate tendency to return to level flight beyond ~3 degrees.
+  const pitchNow = self.direction.y
+  const lw = REF.levelWeight * smootherstep(Math.abs(pitchNow), levelMinSmooth, levelMaxY)
+  if (pitchNow < 0) self.steering.addScaledVector(self.head.up, lw)
+  else if (pitchNow > 0) self.steering.addScaledVector(self.head.up, -lw)
+
+  // wiggle: uniform random lateral force in the current local head frame.
+  const wiggle = THREE.MathUtils.lerp(-REF.wiggleWeight, REF.wiggleWeight, Math.random())
+  self.steering.addScaledVector(self.head.side, wiggle)
+
+  self.neighbours = cohN.map(n => n.index)
+}
+
+function updateHead(a, dt) {
+  const p0 = a.head.position
+  const p1 = a.position
+  const v = tmp1.copy(p1).sub(p0).multiplyScalar(1 / dt)
+  const accelMeasured = tmp2.copy(v).sub(a.head.previousVelocity).multiplyScalar(1 / dt)
+  const F = tmp3.copy(accelMeasured).add(new THREE.Vector3(0, -9.81, 0)).multiplyScalar(REF.bodyMass)
+  let Flat = a.head.side.dot(F)
+
+  const s = v.length()
+  const L = 9.81 * REF.bodyMass * (s * s) / (REF.cruiseSpeed * REF.cruiseSpeed)
+  const bankSide = a.head.side.clone().applyAxisAngle(a.head.forward, a.head.beta)
+  const bankUp = new THREE.Vector3().crossVectors(a.head.forward, bankSide)
+  const Llat = a.head.side.dot(bankUp.multiplyScalar(L))
+  Flat = THREE.MathUtils.clamp(Flat, -L / 1.1, L / 1.1)
+
+  if (Llat < Flat) a.head.beta -= dt * REF.betaIn
+  else if (Llat > Flat) a.head.beta += dt * REF.betaIn
+
+  // StarEscape regenerates H from global up and current direction every integration step.
+  const rebuilt = buildHead(a.direction, a.position)
+  rebuilt.beta = a.head.beta
+  rebuilt.previousVelocity.copy(v)
+  a.head = rebuilt
+}
+
+function integrate(a, dt) {
+  const hdt = 0.5 * dt
+
+  // StarEscape adds cruise drag to the stored steering every physics step.
+  const dv = REF.cruiseSpeed - a.speed
+  const linearForce = a.cruiseWeight * dv * REF.bodyMass
+  a.steering.addScaledVector(a.direction, linearForce)
+
+  // Velocity is reconstructed from scalar speed + direction each step.
+  const vel = tmp1.copy(a.direction).multiplyScalar(a.speed)
+  vel.addScaledVector(a.acceleration, hdt)
+  a.position.addScaledVector(vel, dt)
+
+  // New acceleration is based on the current accumulated steering.
+  a.acceleration.copy(a.steering).multiplyScalar(1 / REF.bodyMass)
+  vel.addScaledVector(a.acceleration, hdt)
+
+  let speed = vel.length()
+  if (!Number.isFinite(speed) || speed < 1e-12) {
+    speed = REF.minSpeed
+    a.direction.set(1, 0, 0)
+  } else {
+    a.direction.copy(vel).multiplyScalar(1 / speed)
+  }
+  a.speed = THREE.MathUtils.clamp(speed, REF.minSpeed, REF.maxSpeed)
+
+  updateHead(a, dt)
 }
 
 let simTime = 0
 let accumulator = 0
-let metricTimer = 0
+let metricsTimer = 0
+const clock = new THREE.Clock()
 
-function physicsStep(dt) {
-  // Perception/decision is asynchronous; steering is held between reactions.
+function physicsStep() {
+  // Behaviour updates first, then all agents are integrated.
   for (let i = 0; i < REF.N; i++) {
     const a = agents[i]
-    if (simTime + 1e-12 >= a.nextReaction) {
+    if (a.nextUpdate <= simTime + 1e-12) {
       behaviouralUpdate(i)
-      do a.nextReaction += REF.reactionTime
-      while (a.nextReaction <= simTime)
+      a.nextUpdate = simTime + REF.reactionTime
     }
   }
 
-  for (const a of agents) integrateAgent(a, dt)
-  simTime += dt
+  for (const a of agents) integrate(a, REF.dt)
+  simTime += REF.dt
 }
 
 function computeCentroid() {
@@ -292,17 +364,17 @@ function computeCentroid() {
   centroid.multiplyScalar(1 / REF.N)
 }
 
-function connectedComponents() {
+function componentCount() {
   const seen = new Array(REF.N).fill(false)
-  let components = 0
+  let count = 0
   for (let root = 0; root < REF.N; root++) {
     if (seen[root]) continue
-    components++
+    count++
     const stack = [root]
     seen[root] = true
     while (stack.length) {
       const i = stack.pop()
-      for (const j of agents[i].lastNeighbours) {
+      for (const j of agents[i].neighbours) {
         if (!seen[j]) {
           seen[j] = true
           stack.push(j)
@@ -310,82 +382,77 @@ function connectedComponents() {
       }
     }
   }
-  return components
+  return count
 }
 
-function updateMetrics() {
-  const meanDir = new THREE.Vector3()
+function updateDiagnostics() {
+  const mean = new THREE.Vector3()
   let speedSum = 0
-  let speed2Sum = 0
-  let nndSum = 0
+  let speed2 = 0
+  let nnd = 0
 
   for (let i = 0; i < REF.N; i++) {
     const a = agents[i]
-    meanDir.add(a.frame.forward)
+    mean.add(a.direction)
     speedSum += a.speed
-    speed2Sum += a.speed * a.speed
-
+    speed2 += a.speed * a.speed
     let best = Infinity
     for (let j = 0; j < REF.N; j++) {
       if (i === j) continue
       best = Math.min(best, a.position.distanceToSquared(agents[j].position))
     }
-    nndSum += Math.sqrt(best)
+    nnd += Math.sqrt(best)
   }
 
   const meanSpeed = speedSum / REF.N
-  const variance = Math.max(0, speed2Sum / REF.N - meanSpeed * meanSpeed)
-  metrics.polarisation = (meanDir.length() / REF.N).toFixed(3)
-  metrics.vitesseMoy = meanSpeed.toFixed(2)
-  metrics.ecartVitesse = Math.sqrt(variance).toFixed(2)
-  metrics.voisinProche = (nndSum / REF.N).toFixed(2)
-  metrics.composantes = String(connectedComponents())
+  const variance = Math.max(0, speed2 / REF.N - meanSpeed * meanSpeed)
+  diagnostics.polarisation = (mean.length() / REF.N).toFixed(3)
+  diagnostics.vitesse = meanSpeed.toFixed(2)
+  diagnostics.ecartVitesse = Math.sqrt(variance).toFixed(2)
+  diagnostics.nnd = (nnd / REF.N).toFixed(2)
+  diagnostics.composantes = String(componentCount())
 }
 
-function renderAgents(dt) {
+function renderScene(realDt) {
   computeCentroid()
 
-  // Camera follows the flock visually. This has zero effect on its physics and
-  // replaces every artificial per-marble screen-edge force used in old versions.
-  cameraTarget.lerp(centroid, 1 - Math.exp(-view.cameraFollow * dt))
-  renderOffset.copy(cameraTarget).multiplyScalar(-view.simToView)
-
   for (const a of agents) {
-    a.mesh.position.copy(a.position).multiplyScalar(view.simToView).add(renderOffset)
-    const depth = THREE.MathUtils.clamp((a.mesh.position.z + 3) / 6, 0, 1)
-    a.mesh.scale.setScalar(THREE.MathUtils.lerp(0.88, 1.14, depth))
-    a.mesh.material.color.setHSL(0.60, 0.04, THREE.MathUtils.lerp(0.58, 0.96, depth))
+    a.mesh.position.copy(a.position).sub(centroid).multiplyScalar(view.simScale)
+    const depth = THREE.MathUtils.clamp(a.mesh.position.z / 8 + 0.5, 0, 1)
+    a.mesh.scale.setScalar(THREE.MathUtils.lerp(0.88, 1.13, depth))
   }
+
+  // Camera follows only the rendered body, never feeds back into the simulation.
+  cameraTarget.lerp(new THREE.Vector3(0, 0, 0), 1 - Math.exp(-view.follow * realDt))
+  cameraPos.set(0, view.cameraHeight, view.cameraDistance)
+  camera.position.lerp(cameraPos, 1 - Math.exp(-view.follow * realDt))
+  camera.lookAt(cameraTarget)
+
+  renderer.render(scene, camera)
 }
 
-// Invisible acclimatisation: let the reference flock organise itself before
-// the first displayed frame, as done conceptually in the scientific workflow.
-for (let i = 0; i < 3000; i++) physicsStep(REF.physicsDt)
-updateMetrics()
-
-const clock = new THREE.Clock()
 function animate() {
   requestAnimationFrame(animate)
-  const frameDt = Math.min(clock.getDelta(), 0.05)
-  accumulator += frameDt
+  const realDt = Math.min(clock.getDelta(), 0.05)
+  accumulator += realDt
 
+  // Keep the exact 1 ms physics timestep. Cap catch-up to avoid browser death after tab suspension.
+  const maxSteps = 80
   let steps = 0
-  const maxSteps = 60
-  while (accumulator >= REF.physicsDt && steps < maxSteps) {
-    physicsStep(REF.physicsDt)
-    accumulator -= REF.physicsDt
+  while (accumulator >= REF.dt && steps < maxSteps) {
+    physicsStep()
+    accumulator -= REF.dt
     steps++
   }
   if (steps === maxSteps) accumulator = 0
 
-  metricTimer += frameDt
-  if (metricTimer >= 0.5) {
-    metricTimer = 0
-    if (view.showMetrics) updateMetrics()
+  metricsTimer += realDt
+  if (metricsTimer >= 0.25) {
+    updateDiagnostics()
+    metricsTimer = 0
   }
 
-  renderAgents(frameDt)
-  renderer.render(scene, camera)
+  renderScene(realDt)
 }
 animate()
 
