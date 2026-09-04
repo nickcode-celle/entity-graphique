@@ -75,8 +75,8 @@ scene.add(new THREE.Mesh(geo,mat))
 
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
-const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value})
+const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850}
+const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
