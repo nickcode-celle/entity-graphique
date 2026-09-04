@@ -76,8 +76,18 @@ scene.add(new THREE.Mesh(geo,mat))
 
 const label=document.createElement('div');label.textContent=`1000 billes — BOUNDS ${(BOUNDS_FACTOR*100).toFixed(0)}%`;Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.55)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 
-const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,CAMERA:850,TAILLE:1,VITESSE:1}
-const gui=new GUI({title:'ENTITY'});gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()});gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value});gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value});gui.add(controls,'TAILLE',.25,3,.05).name('TAILLE BILLES').onChange(value=>{su.marbleScale.value=value});gui.add(controls,'VITESSE',.1,3,.05).name('VITESSE').onChange(value=>{movementSpeed=value})
+const controls={BOUNDS:BOUNDS_FACTOR,CENTRE:5,SEPARATION:20,ALIGNEMENT:20,COHESION:20,CAMERA:850,TAILLE:1,VITESSE:1}
+const gui=new GUI({title:'ENTITY'})
+gui.add(controls,'BOUNDS',.02,1,.01).name('BOUNDS').onFinishChange(value=>{const u=new URL(location.href);u.searchParams.set('bounds',value.toFixed(2));location.href=u.toString()})
+gui.add(controls,'CENTRE',0,30,.1).name('CENTRE').onChange(value=>{vu.centralPull.value=value})
+const physics=gui.addFolder('PHYSIQUE — TEST')
+physics.add(controls,'SEPARATION',1,60,1).name('SEPARATION').onChange(value=>{vu.separationDistance.value=value})
+physics.add(controls,'ALIGNEMENT',1,60,1).name('ALIGNEMENT').onChange(value=>{vu.alignmentDistance.value=value})
+physics.add(controls,'COHESION',1,60,1).name('COHESION').onChange(value=>{vu.cohesionDistance.value=value})
+physics.close()
+gui.add(controls,'CAMERA',500,1600,10).name('CAMERA').onChange(value=>{camera.position.z=value})
+gui.add(controls,'TAILLE',.25,3,.05).name('TAILLE BILLES').onChange(value=>{su.marbleScale.value=value})
+gui.add(controls,'VITESSE',.1,3,.05).name('VITESSE').onChange(value=>{movementSpeed=value})
 
 renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-windowHalfX;mouseY=e.clientY-windowHalfY})
 addEventListener('resize',()=>{windowHalfX=innerWidth/2;windowHalfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
