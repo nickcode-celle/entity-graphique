@@ -2,9 +2,8 @@ import * as THREE from 'three'
 import GUI from 'lil-gui'
 import './style.css'
 
-// ENTITY — STARESCAPE PORT 1
-// Literal port of the published StarEscape normal-flocking regime.
-// Simulation stays in StarEscape units; only rendering is rescaled.
+// ENTITY — STARESCAPE PORT 1 / TRAJECTORY DIAGNOSTIC
+// Physics unchanged. The camera is fixed and the centroid path is drawn in world space.
 
 const app = document.querySelector('#app')
 const scene = new THREE.Scene()
@@ -66,17 +65,20 @@ const REF = Object.freeze({
 })
 
 const view = {
-  simScale: 0.48,
-  cameraDistance: 25,
-  cameraHeight: 16,
-  follow: 4.0,
+  worldScale: 0.10,
+  cameraX: 8,
+  cameraY: 14,
+  cameraZ: 24,
+  targetX: 7,
+  targetY: 1,
+  targetZ: 6,
 }
 
-const gui = new GUI({ title: 'ENTITY — StarEscape Port 1' })
-gui.add(view, 'simScale', 0.25, 0.8, 0.01).name('Échelle visuelle')
-gui.add(view, 'cameraDistance', 12, 50, 1).name('Distance caméra')
-gui.add(view, 'cameraHeight', 4, 35, 1).name('Hauteur caméra')
-gui.add(view, 'follow', 0.5, 10, 0.1).name('Suivi caméra')
+const gui = new GUI({ title: 'ENTITY — Trajectoire StarEscape' })
+gui.add(view, 'worldScale', 0.05, 0.20, 0.01).name('Échelle monde')
+gui.add(view, 'cameraX', -10, 30, 1).name('Caméra X')
+gui.add(view, 'cameraY', 5, 40, 1).name('Caméra Y')
+gui.add(view, 'cameraZ', 10, 50, 1).name('Caméra Z')
 
 const diagnostics = {
   polarisation: '—',
@@ -84,6 +86,7 @@ const diagnostics = {
   ecartVitesse: '—',
   nnd: '—',
   composantes: '—',
+  distanceCentroid: '—',
 }
 const folder = gui.addFolder('Diagnostic')
 folder.add(diagnostics, 'polarisation').listen().disable()
@@ -91,6 +94,7 @@ folder.add(diagnostics, 'vitesse').listen().disable()
 folder.add(diagnostics, 'ecartVitesse').listen().disable()
 folder.add(diagnostics, 'nnd').listen().disable()
 folder.add(diagnostics, 'composantes').listen().disable()
+folder.add(diagnostics, 'distanceCentroid').listen().disable()
 
 const geometry = new THREE.SphereGeometry(0.105, 20, 20)
 const baseMaterial = new THREE.MeshStandardMaterial({
@@ -106,8 +110,14 @@ const tmp1 = new THREE.Vector3()
 const tmp2 = new THREE.Vector3()
 const tmp3 = new THREE.Vector3()
 const centroid = new THREE.Vector3()
-const cameraTarget = new THREE.Vector3()
-const cameraPos = new THREE.Vector3()
+const initialCentroid = new THREE.Vector3()
+const trailPoints = []
+let lastTrailSample = -Infinity
+
+const trailGeometry = new THREE.BufferGeometry()
+const trailMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 })
+const trailLine = new THREE.Line(trailGeometry, trailMaterial)
+scene.add(trailLine)
 
 function smootherstep(x, edge0, edge1) {
   const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1)
@@ -154,7 +164,6 @@ function initialise() {
     const mesh = new THREE.Mesh(geometry, baseMaterial.clone())
     scene.add(mesh)
 
-    // Exact StarEscape in_flock geometry: [0,radius]^3 + altitude on y.
     const position = new THREE.Vector3(
       Math.random() * REF.initRadius,
       Math.random() * REF.initRadius + REF.initAltitude,
@@ -173,7 +182,7 @@ function initialise() {
       acceleration: new THREE.Vector3(),
       steering: new THREE.Vector3(),
       head,
-      cruiseWeight: 0, // StarEscape keeps this at zero until first state resume/update.
+      cruiseWeight: 0,
       nextUpdate: Math.floor(Math.random() * (REF.firstUpdateWindow / REF.dt + 1)) * REF.dt,
       neighbours: [],
     })
@@ -181,9 +190,7 @@ function initialise() {
 }
 initialise()
 
-const cfov = Math.cos(
-  THREE.MathUtils.degToRad(180 - 0.5 * (360 - REF.fovDeg))
-)
+const cfov = Math.cos(THREE.MathUtils.degToRad(180 - 0.5 * (360 - REF.fovDeg)))
 const maxDist2 = REF.maxDist * REF.maxDist
 const minSep2 = REF.minSep * REF.minSep
 const roostRadius2 = REF.roostRadius * REF.roostRadius
@@ -226,13 +233,11 @@ function behaviouralUpdate(index) {
   self.steering.set(0, 0, 0)
   self.cruiseWeight = REF.cruiseWeight
 
-  // align_n: scan distance-sorted neighbours until 7 valid FOV neighbours are found.
   const alignN = topological(index, REF.topo, (s, o, ni) => inFov(s, o, ni.d2))
   tmp1.set(0, 0, 0)
   for (const ni of alignN) tmp1.add(agents[ni.index].direction)
   if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(REF.alignWeight))
 
-  // cohere_centroid_distance: same topological search, magnitude set by distance to local centroid.
   const cohN = topological(index, REF.topo, (s, o, ni) => inFov(s, o, ni.d2))
   tmp1.set(0, 0, 0)
   for (const ni of cohN) tmp1.add(tmp2.copy(agents[ni.index].position).sub(self.position))
@@ -243,13 +248,11 @@ function behaviouralUpdate(index) {
     if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(w))
   }
 
-  // avoid_n_position: find the first visible neighbour inside minSep.
   const avoidN = topological(index, REF.avoidTopo, (s, o, ni) => inFov(s, o, ni.d2) && ni.d2 < minSep2)
   tmp1.set(0, 0, 0)
   for (const ni of avoidN) tmp1.add(tmp2.copy(self.position).sub(agents[ni.index].position))
   if (tmp1.lengthSq() > 1e-12) self.steering.add(tmp1.normalize().multiplyScalar(REF.avoidWeight))
 
-  // roost_attraction: exact published plane field in x/z.
   const dx = REF.roostX - self.position.x
   const dz = REF.roostZ - self.position.z
   const r2 = dx * dx + dz * dz
@@ -260,28 +263,17 @@ function behaviouralUpdate(index) {
     self.steering.z += dz * inv * rw
   }
 
-  // altitude_attraction: exact smootherstep-bipolar target and local up axis.
   const altDev = self.position.y - REF.altitudePreferred
-  const desiredY = -maxPitchY * smootherstepBipolar(
-    altDev,
-    -REF.altitudeSmoothRange,
-    REF.altitudeSmoothRange
-  )
-  self.steering.addScaledVector(
-    self.head.up,
-    REF.altitudeWeight * (desiredY - self.direction.y)
-  )
+  const desiredY = -maxPitchY * smootherstepBipolar(altDev, -REF.altitudeSmoothRange, REF.altitudeSmoothRange)
+  self.steering.addScaledVector(self.head.up, REF.altitudeWeight * (desiredY - self.direction.y))
 
-  // level_attraction: separate tendency to return to level flight beyond ~3 degrees.
   const pitchNow = self.direction.y
   const lw = REF.levelWeight * smootherstep(Math.abs(pitchNow), levelMinSmooth, levelMaxY)
   if (pitchNow < 0) self.steering.addScaledVector(self.head.up, lw)
   else if (pitchNow > 0) self.steering.addScaledVector(self.head.up, -lw)
 
-  // wiggle: uniform random lateral force in the current local head frame.
   const wiggle = THREE.MathUtils.lerp(-REF.wiggleWeight, REF.wiggleWeight, Math.random())
   self.steering.addScaledVector(self.head.side, wiggle)
-
   self.neighbours = cohN.map(n => n.index)
 }
 
@@ -303,7 +295,6 @@ function updateHead(a, dt) {
   if (Llat < Flat) a.head.beta -= dt * REF.betaIn
   else if (Llat > Flat) a.head.beta += dt * REF.betaIn
 
-  // StarEscape regenerates H from global up and current direction every integration step.
   const rebuilt = buildHead(a.direction, a.position)
   rebuilt.beta = a.head.beta
   rebuilt.previousVelocity.copy(v)
@@ -312,18 +303,13 @@ function updateHead(a, dt) {
 
 function integrate(a, dt) {
   const hdt = 0.5 * dt
-
-  // StarEscape adds cruise drag to the stored steering every physics step.
   const dv = REF.cruiseSpeed - a.speed
   const linearForce = a.cruiseWeight * dv * REF.bodyMass
   a.steering.addScaledVector(a.direction, linearForce)
 
-  // Velocity is reconstructed from scalar speed + direction each step.
   const vel = tmp1.copy(a.direction).multiplyScalar(a.speed)
   vel.addScaledVector(a.acceleration, hdt)
   a.position.addScaledVector(vel, dt)
-
-  // New acceleration is based on the current accumulated steering.
   a.acceleration.copy(a.steering).multiplyScalar(1 / REF.bodyMass)
   vel.addScaledVector(a.acceleration, hdt)
 
@@ -335,7 +321,6 @@ function integrate(a, dt) {
     a.direction.copy(vel).multiplyScalar(1 / speed)
   }
   a.speed = THREE.MathUtils.clamp(speed, REF.minSpeed, REF.maxSpeed)
-
   updateHead(a, dt)
 }
 
@@ -345,7 +330,6 @@ let metricsTimer = 0
 const clock = new THREE.Clock()
 
 function physicsStep() {
-  // Behaviour updates first, then all agents are integrated.
   for (let i = 0; i < REF.N; i++) {
     const a = agents[i]
     if (a.nextUpdate <= simTime + 1e-12) {
@@ -353,7 +337,6 @@ function physicsStep() {
       a.nextUpdate = simTime + REF.reactionTime
     }
   }
-
   for (const a of agents) integrate(a, REF.dt)
   simTime += REF.dt
 }
@@ -363,6 +346,9 @@ function computeCentroid() {
   for (const a of agents) centroid.add(a.position)
   centroid.multiplyScalar(1 / REF.N)
 }
+
+computeCentroid()
+initialCentroid.copy(centroid)
 
 function componentCount() {
   const seen = new Array(REF.N).fill(false)
@@ -411,23 +397,29 @@ function updateDiagnostics() {
   diagnostics.ecartVitesse = Math.sqrt(variance).toFixed(2)
   diagnostics.nnd = (nnd / REF.N).toFixed(2)
   diagnostics.composantes = String(componentCount())
+  diagnostics.distanceCentroid = centroid.distanceTo(initialCentroid).toFixed(1)
 }
 
-function renderScene(realDt) {
+function updateTrail() {
+  if (simTime - lastTrailSample < 0.05) return
+  lastTrailSample = simTime
+  trailPoints.push(centroid.clone().multiplyScalar(view.worldScale))
+  if (trailPoints.length > 2500) trailPoints.shift()
+  trailGeometry.setFromPoints(trailPoints)
+}
+
+function renderScene() {
   computeCentroid()
+  updateTrail()
 
   for (const a of agents) {
-    a.mesh.position.copy(a.position).sub(centroid).multiplyScalar(view.simScale)
-    const depth = THREE.MathUtils.clamp(a.mesh.position.z / 8 + 0.5, 0, 1)
+    a.mesh.position.copy(a.position).multiplyScalar(view.worldScale)
+    const depth = THREE.MathUtils.clamp(a.mesh.position.z / 18 + 0.5, 0, 1)
     a.mesh.scale.setScalar(THREE.MathUtils.lerp(0.88, 1.13, depth))
   }
 
-  // Camera follows only the rendered body, never feeds back into the simulation.
-  cameraTarget.lerp(new THREE.Vector3(0, 0, 0), 1 - Math.exp(-view.follow * realDt))
-  cameraPos.set(0, view.cameraHeight, view.cameraDistance)
-  camera.position.lerp(cameraPos, 1 - Math.exp(-view.follow * realDt))
-  camera.lookAt(cameraTarget)
-
+  camera.position.set(view.cameraX, view.cameraY, view.cameraZ)
+  camera.lookAt(view.targetX, view.targetY, view.targetZ)
   renderer.render(scene, camera)
 }
 
@@ -436,7 +428,6 @@ function animate() {
   const realDt = Math.min(clock.getDelta(), 0.05)
   accumulator += realDt
 
-  // Keep the exact 1 ms physics timestep. Cap catch-up to avoid browser death after tab suspension.
   const maxSteps = 80
   let steps = 0
   while (accumulator >= REF.dt && steps < maxSteps) {
@@ -448,11 +439,12 @@ function animate() {
 
   metricsTimer += realDt
   if (metricsTimer >= 0.25) {
+    computeCentroid()
     updateDiagnostics()
     metricsTimer = 0
   }
 
-  renderScene(realDt)
+  renderScene()
 }
 animate()
 
