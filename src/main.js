@@ -61,10 +61,10 @@ const controls = {
 }
 
 const personality = [
-  { name: 'Curiosité', color: 0xffd400, level: 31 },
-  { name: 'Humour', color: 0xff7a00, level: 24 },
+  { name: 'Curiosité', color: 0xffe600, level: 31 },
+  { name: 'Humour', color: 0xff6500, level: 24 },
   { name: 'Franchise', color: 0xe5231f, level: 28 },
-  { name: 'Chaleur', color: 0xc98a18, level: 33 },
+  { name: 'Chaleur', color: 0xa86a12, level: 33 },
   { name: 'Réserve', color: 0x2468d8, level: 19 },
   { name: 'Contradiction', color: 0x7137c8, level: 22 },
   { name: 'Imagination', color: 0x5146e5, level: 30 },
@@ -218,7 +218,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — palette personnalité distincte ; lumière directe + ambiante ; ombres conservées'
+label.textContent = 'ENTITY — palette personnalité distincte ; jaune / orange / ocre séparés'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
