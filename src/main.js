@@ -2,99 +2,41 @@ import * as THREE from 'three'
 import GUI from 'lil-gui'
 import './style.css'
 
-const BODY_COUNT = 200
-const SATELLITE_COUNT = 5
-const app = document.querySelector('#app')
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight)
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; app.appendChild(renderer.domElement)
-const scene = new THREE.Scene(); scene.background = new THREE.Color(0x16181b)
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000); camera.position.z = 350
-const entityGroup = new THREE.Group(); scene.add(entityGroup)
-const goldenAngle = Math.PI * (3 - Math.sqrt(5))
-function fibonacciShell(count,radius,phase,rotation){const pts=[];const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase;const p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
-function makeBodyCenters(){const pts=[new THREE.Vector3()];pts.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)));pts.push(...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)));pts.push(...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)));pts.push(...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));return pts}
+const BODY_COUNT=200,SATELLITE_COUNT=5
+const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;app.appendChild(renderer.domElement)
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x16181b);const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000);camera.position.z=350
+const entityGroup=new THREE.Group();scene.add(entityGroup)
+const goldenAngle=Math.PI*(3-Math.sqrt(5))
+function fibonacciShell(count,radius,phase,rotation){const pts=[],q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase,p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
+function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));return p}
 const controls={ECART:28,TAILLE_BILLES:.90,V1:1,LIBERTE:.15,CHEVAUCHEMENT:1.45,ROTATION:.11,FREQUENCE_INVERSIONS:12,BRILLANCE:.62,INTENSITE_LUMIERE:3.65,LUMIERE_AMBIANTE:1.90,CAMERA:350,VOIR_CELLULES:false}
-const personality=[
-{name:'Curiosité',color:0xffe600,level:18},{name:'Humour',color:0xff6500,level:58},{name:'Franchise',color:0xe5231f,level:76},{name:'Chaleur',color:0xa86a12,level:27},{name:'Réserve',color:0x2468d8,level:12},{name:'Contradiction',color:0x7137c8,level:68},{name:'Imagination',color:0x5146e5,level:84},{name:'Spontanéité',color:0x28c95b,level:43},{name:'Sensibilité',color:0xe95a9d,level:22},{name:'Esprit critique',color:0x13bfc8,level:63}]
-const assignments=Array.from({length:BODY_COUNT},(_,i)=>i%personality.length);for(let i=assignments.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[assignments[i],assignments[j]]=[assignments[j],assignments[i]]}
-
-// RÈGLE ENTITY VALIDÉE :
-// - une bille peut théoriquement prendre n'importe quelle valeur de 0 à 100 ;
-// - les valeurs éloignées de la moyenne sont possibles mais moins fréquentes ;
-// - la moyenne des billes du sous-domaine doit être exactement la cible globale.
-function randomEncadredValue(target){
-  // Mélange de tirages : la majorité reste autour de la cible,
-  // mais une minorité explore largement la plage 0–100.
-  const wide = Math.random() < 0.28
-  if (wide) return Math.random() * 100
-  const a = Math.random(), b = Math.random(), c = Math.random()
-  const centered = (a + b + c) / 3
-  return THREE.MathUtils.clamp(target + (centered - 0.5) * 90, 0, 100)
-}
-
-function forceExactMean(values,target){
-  const result = values.slice()
-  const desiredSum = target * result.length
-  for(let pass=0;pass<30;pass++){
-    const currentSum=result.reduce((s,v)=>s+v,0)
-    const diff=desiredSum-currentSum
-    if(Math.abs(diff)<1e-9) break
-    const eligible=[]
-    for(let i=0;i<result.length;i++){
-      if((diff>0 && result[i]<100-1e-12) || (diff<0 && result[i]>1e-12)) eligible.push(i)
-    }
-    if(!eligible.length) break
-    const share=diff/eligible.length
-    for(const i of eligible) result[i]=THREE.MathUtils.clamp(result[i]+share,0,100)
-  }
-  const residual=desiredSum-result.reduce((s,v)=>s+v,0)
-  if(Math.abs(residual)>1e-9){
-    for(let i=0;i<result.length;i++){
-      const candidate=result[i]+residual
-      if(candidate>=0 && candidate<=100){result[i]=candidate;break}
-    }
-  }
-  return result
-}
-
-const individualLevels=new Array(BODY_COUNT)
-for(let p=0;p<personality.length;p++){
-  const ids=assignments.map((a,i)=>a===p?i:-1).filter(i=>i>=0)
-  const target=personality[p].level
-  let values=ids.map(()=>randomEncadredValue(target))
-  values=forceExactMean(values,target)
-  for(let k=values.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[values[k],values[j]]=[values[j],values[k]]}
-  ids.forEach((id,k)=>individualLevels[id]=values[k])
-}
-
-console.group('ENTITY — contrôle Personnalité')
-for(let p=0;p<personality.length;p++){
- const ids=assignments.map((a,i)=>a===p?i:-1).filter(i=>i>=0)
- const values=ids.map(id=>individualLevels[id])
- const average=values.reduce((sum,v)=>sum+v,0)/values.length
- console.log(`${personality[p].name} — cible ${personality[p].level}% — moyenne ${average.toFixed(6)}%`)
- console.log(values.map((v,i)=>`B${i+1}: ${v.toFixed(2)}%`).join(' | '))
-}
-console.groupEnd()
-window.ENTITY_PERSONNALITE={personality,assignments,individualLevels}
-
-function personalityColor(index){const p=personality[assignments[index]],vivid=new THREE.Color(p.color),hsl={};vivid.getHSL(hsl);const level=individualLevels[index]/100;const saturation=level<=.4?THREE.MathUtils.lerp(.62,.88,level/.4):THREE.MathUtils.lerp(.88,1,(level-.4)/.6);return new THREE.Color().setHSL(hsl.h,saturation,hsl.l)}
+const personality=[{name:'Curiosité',color:0xffe600,level:18},{name:'Humour',color:0xff6500,level:58},{name:'Franchise',color:0xe5231f,level:76},{name:'Chaleur',color:0xa86a12,level:27},{name:'Réserve',color:0x2468d8,level:12},{name:'Contradiction',color:0x7137c8,level:68},{name:'Imagination',color:0x5146e5,level:84},{name:'Spontanéité',color:0x28c95b,level:43},{name:'Sensibilité',color:0xe95a9d,level:22},{name:'Esprit critique',color:0x13bfc8,level:63}]
+// Exemple volontairement contrasté pour tester Relation.
+const relation=[{name:'Familiarité',level:18},{name:'Confiance',level:62},{name:'Complicité',level:78},{name:'Proximité',level:34},{name:'Compréhension',level:71},{name:'Aisance',level:46},{name:'Synchronisation',level:84},{name:'Tolérance',level:29},{name:'Respect',level:67},{name:'Réciprocité',level:53}]
+function shuffledAssignments(n,k){const a=Array.from({length:n},(_,i)=>i%k);for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+const assignments=shuffledAssignments(BODY_COUNT,personality.length),relationAssignments=shuffledAssignments(BODY_COUNT,relation.length)
+function randomEncadredValue(target){if(Math.random()<.28)return Math.random()*100;const centered=(Math.random()+Math.random()+Math.random())/3;return THREE.MathUtils.clamp(target+(centered-.5)*90,0,100)}
+function forceExactMean(values,target){const r=values.slice(),desired=target*r.length;for(let pass=0;pass<30;pass++){const diff=desired-r.reduce((s,v)=>s+v,0);if(Math.abs(diff)<1e-9)break;const e=[];for(let i=0;i<r.length;i++)if((diff>0&&r[i]<100-1e-12)||(diff<0&&r[i]>1e-12))e.push(i);if(!e.length)break;const share=diff/e.length;for(const i of e)r[i]=THREE.MathUtils.clamp(r[i]+share,0,100)}const residual=desired-r.reduce((s,v)=>s+v,0);if(Math.abs(residual)>1e-9)for(let i=0;i<r.length;i++){const c=r[i]+residual;if(c>=0&&c<=100){r[i]=c;break}}return r}
+function buildIndividualLevels(domains,domainAssignments){const levels=new Array(BODY_COUNT);for(let p=0;p<domains.length;p++){const ids=domainAssignments.map((a,i)=>a===p?i:-1).filter(i=>i>=0),target=domains[p].level;let values=forceExactMean(ids.map(()=>randomEncadredValue(target)),target);for(let k=values.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[values[k],values[j]]=[values[j],values[k]]}ids.forEach((id,k)=>levels[id]=values[k])}return levels}
+const individualLevels=buildIndividualLevels(personality,assignments),relationIndividualLevels=buildIndividualLevels(relation,relationAssignments)
+function logDomain(title,domains,domainAssignments,levels){console.group(title);for(let p=0;p<domains.length;p++){const ids=domainAssignments.map((a,i)=>a===p?i:-1).filter(i=>i>=0),values=ids.map(id=>levels[id]),avg=values.reduce((s,v)=>s+v,0)/values.length;console.log(`${domains[p].name} — cible ${domains[p].level}% — moyenne ${avg.toFixed(6)}%`);console.log(values.map((v,i)=>`B${i+1}: ${v.toFixed(2)}%`).join(' | '))}console.groupEnd()}
+logDomain('ENTITY — contrôle Personnalité',personality,assignments,individualLevels);logDomain('ENTITY — contrôle Relation',relation,relationAssignments,relationIndividualLevels)
+window.ENTITY_PERSONNALITE={personality,assignments,individualLevels};window.ENTITY_RELATION={relation,relationAssignments,relationIndividualLevels}
+function personalityColor(i){const p=personality[assignments[i]],v=new THREE.Color(p.color),h={};v.getHSL(h);const level=individualLevels[i]/100,s=level<=.4?THREE.MathUtils.lerp(.62,.88,level/.4):THREE.MathUtils.lerp(.88,1,(level-.4)/.6);return new THREE.Color().setHSL(h.h,s,h.l)}
 const allMarbleMaterials=[]
-function personalityMaterial(index){const material=new THREE.MeshStandardMaterial({color:personalityColor(index),roughness:1-controls.BRILLANCE,metalness:.02,transparent:false,opacity:1});allMarbleMaterials.push(material);return material}
+function personalityMaterial(i){const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,transparent:false,opacity:1});allMarbleMaterials.push(m);return m}
 function updateShine(){for(const m of allMarbleMaterials)m.roughness=1-controls.BRILLANCE}
 const centers=makeBodyCenters(),marbleGeometry=new THREE.SphereGeometry(6,28,20),marbles=[],directions=[],travel=[],wanderTargets=[],wanderClocks=[]
 function randomDirection(){return new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize()}
 for(let i=0;i<BODY_COUNT;i++){const mesh=new THREE.Mesh(marbleGeometry,personalityMaterial(i));mesh.scale.setScalar(controls.TAILLE_BILLES);mesh.castShadow=true;mesh.receiveShadow=true;entityGroup.add(mesh);marbles.push(mesh);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5)}
-const satelliteGroup=new THREE.Group();scene.add(satelliteGroup);const satellites=[];const satelliteData=[{radius:103,speed:.19,phase:.40,tiltX:.55,tiltZ:.18},{radius:112,speed:-.14,phase:1.70,tiltX:-.38,tiltZ:.72},{radius:98,speed:.23,phase:2.95,tiltX:.22,tiltZ:-.61},{radius:108,speed:-.17,phase:4.15,tiltX:.68,tiltZ:-.27},{radius:101,speed:.15,phase:5.45,tiltX:-.52,tiltZ:-.76}]
+const satelliteGroup=new THREE.Group();scene.add(satelliteGroup);const satellites=[],satelliteData=[{radius:103,speed:.19,phase:.40,tiltX:.55,tiltZ:.18},{radius:112,speed:-.14,phase:1.70,tiltX:-.38,tiltZ:.72},{radius:98,speed:.23,phase:2.95,tiltX:.22,tiltZ:-.61},{radius:108,speed:-.17,phase:4.15,tiltX:.68,tiltZ:-.27},{radius:101,speed:.15,phase:5.45,tiltX:-.52,tiltZ:-.76}]
 for(let i=0;i<SATELLITE_COUNT;i++){const mesh=new THREE.Mesh(marbleGeometry,personalityMaterial(i));mesh.scale.setScalar(controls.TAILLE_BILLES);mesh.castShadow=true;mesh.receiveShadow=true;satelliteGroup.add(mesh);satellites.push(mesh)}
 const cellGroup=new THREE.Group();entityGroup.add(cellGroup);const cellGeometry=new THREE.SphereGeometry(.5,10,8),cellMaterial=new THREE.MeshBasicMaterial({color:0x6688aa,wireframe:true,transparent:true,opacity:.12});for(let i=0;i<BODY_COUNT;i++)cellGroup.add(new THREE.Mesh(cellGeometry,cellMaterial));cellGroup.visible=false
-const ambientLight=new THREE.HemisphereLight(0xffffff,0x30343b,controls.LUMIERE_AMBIANTE);scene.add(ambientLight)
-const cameraLightOffset=new THREE.Vector3(42,28,0),cameraLight=new THREE.SpotLight(0xffffff,controls.INTENSITE_LUMIERE,0,Math.PI/3.2,.55,0);cameraLight.position.copy(camera.position).add(cameraLightOffset);cameraLight.target.position.set(0,0,0);cameraLight.castShadow=true;cameraLight.shadow.mapSize.set(4096,4096);cameraLight.shadow.camera.near=100;cameraLight.shadow.camera.far=800;cameraLight.shadow.bias=-.00015;cameraLight.shadow.normalBias=.015;cameraLight.shadow.radius=3;scene.add(cameraLight);scene.add(cameraLight.target)
+const ambientLight=new THREE.HemisphereLight(0xffffff,0x30343b,controls.LUMIERE_AMBIANTE);scene.add(ambientLight);const cameraLightOffset=new THREE.Vector3(42,28,0),cameraLight=new THREE.SpotLight(0xffffff,controls.INTENSITE_LUMIERE,0,Math.PI/3.2,.55,0);cameraLight.position.copy(camera.position).add(cameraLightOffset);cameraLight.target.position.set(0,0,0);cameraLight.castShadow=true;cameraLight.shadow.mapSize.set(4096,4096);cameraLight.shadow.camera.near=100;cameraLight.shadow.camera.far=800;cameraLight.shadow.bias=-.00015;cameraLight.shadow.normalBias=.015;cameraLight.shadow.radius=3;scene.add(cameraLight,cameraLight.target)
 function updateLayout(){const spacing=controls.ECART;for(let i=0;i<BODY_COUNT;i++){marbles[i].scale.setScalar(controls.TAILLE_BILLES);marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i]);const cell=cellGroup.children[i];cell.position.copy(centers[i]).multiplyScalar(spacing);cell.scale.setScalar(spacing*controls.LIBERTE*controls.CHEVAUCHEMENT*2)}for(const s of satellites)s.scale.setScalar(controls.TAILLE_BILLES)}updateLayout()
 function updateCameraAndLight(){camera.position.z=controls.CAMERA;cameraLight.position.copy(camera.position).add(cameraLightOffset)}
-const gui=new GUI({title:'ENTITY — PERSONNALITÉ / COULEUR'});gui.add(controls,'ROTATION',0,2,.01).name('V2 — VITESSE ROTATION');gui.add(controls,'FREQUENCE_INVERSIONS',0,12,.1).name('FREQUENCE INVERSIONS / MIN');gui.add(controls,'BRILLANCE',0,1,.01).name('BRILLANCE BILLES').onChange(updateShine);gui.add(controls,'INTENSITE_LUMIERE',0,6,.05).name('INTENSITÉ LUMIÈRE').onChange(v=>cameraLight.intensity=v);gui.add(controls,'LUMIERE_AMBIANTE',0,3,.05).name('LUMIÈRE AMBIANTE').onChange(v=>ambientLight.intensity=v);gui.add(controls,'ECART',13,28,.25).name('TAILLE / ECART').onChange(updateLayout);gui.add(controls,'TAILLE_BILLES',.4,1.8,.02).name('TAILLE BILLES').onChange(updateLayout);gui.add(controls,'V1',0,3,.05).name('V1 — VIE INTERNE');gui.add(controls,'LIBERTE',.05,.45,.01).name('LIBERTE CELLULE').onChange(updateLayout);gui.add(controls,'CHEVAUCHEMENT',1,1.8,.05).name('CHEVAUCHEMENT').onChange(updateLayout);gui.add(controls,'CAMERA',250,800,10).name('CAMERA').onChange(updateCameraAndLight);gui.add(controls,'VOIR_CELLULES').name('VOIR CELLULES').onChange(v=>cellGroup.visible=v)
-const label=document.createElement('div');label.textContent='ENTITY — Personnalité : variation individuelle 0–100, moyenne exacte';Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.65)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
+const gui=new GUI({title:'ENTITY — PERSONNALITÉ + RELATION'});gui.add(controls,'ROTATION',0,2,.01).name('V2 — VITESSE ROTATION');gui.add(controls,'FREQUENCE_INVERSIONS',0,12,.1).name('FREQUENCE INVERSIONS / MIN');gui.add(controls,'BRILLANCE',0,1,.01).name('BRILLANCE BILLES').onChange(updateShine);gui.add(controls,'INTENSITE_LUMIERE',0,6,.05).name('INTENSITÉ LUMIÈRE').onChange(v=>cameraLight.intensity=v);gui.add(controls,'LUMIERE_AMBIANTE',0,3,.05).name('LUMIÈRE AMBIANTE').onChange(v=>ambientLight.intensity=v);gui.add(controls,'ECART',13,28,.25).name('TAILLE / ECART').onChange(updateLayout);gui.add(controls,'TAILLE_BILLES',.4,1.8,.02).name('TAILLE BILLES').onChange(updateLayout);gui.add(controls,'V1',0,3,.05).name('V1 — VIE INTERNE');gui.add(controls,'LIBERTE',.05,.45,.01).name('LIBERTE CELLULE').onChange(updateLayout);gui.add(controls,'CHEVAUCHEMENT',1,1.8,.05).name('CHEVAUCHEMENT').onChange(updateLayout);gui.add(controls,'CAMERA',250,800,10).name('CAMERA').onChange(updateCameraAndLight);gui.add(controls,'VOIR_CELLULES').name('VOIR CELLULES').onChange(v=>cellGroup.visible=v)
+const label=document.createElement('div');label.textContent='ENTITY — Relation : 0% = vitesse 1 / 100% = vitesse 2';Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.65)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(label)
 const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),rotationAxis=randomDirection(),rotationAxisTarget=randomDirection(),deltaRotation=new THREE.Quaternion();let rotationAxisClock=8+Math.random()*8,rotationSense=1,elapsed=0;const satelliteEuler=new THREE.Euler(),satellitePos=new THREE.Vector3()
-function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;const spacing=controls.ECART,maxRadius=spacing*controls.LIBERTE*controls.CHEVAUCHEMENT,speed=controls.V1*spacing*.42;for(let i=0;i<BODY_COUNT;i++){if(speed>0){wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i].lerp(randomDirection(),.65).normalize()}const d=travel[i].length(),normalized=maxRadius>0?d/maxRadius:0,returnStrength=THREE.MathUtils.smoothstep(normalized,.55,1);inward.copy(travel[i]);if(inward.lengthSq()>.000001)inward.normalize().multiplyScalar(-1);else inward.set(0,0,0);steer.copy(wanderTargets[i]).multiplyScalar(.30);steer.addScaledVector(inward,returnStrength*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],speed*dt);if(travel[i].length()>maxRadius){travel[i].setLength(maxRadius);directions[i].lerp(inward,.06).normalize()}}marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])}if(controls.ROTATION>0){rotationAxisClock-=dt;if(rotationAxisClock<=0){rotationAxisClock=8+Math.random()*10;rotationAxisTarget.copy(randomDirection());if(rotationAxisTarget.dot(rotationAxis)<-.7)rotationAxisTarget.multiplyScalar(-1)}rotationAxis.lerp(rotationAxisTarget,1-Math.exp(-dt*.22)).normalize();const ips=controls.FREQUENCE_INVERSIONS/60,prob=1-Math.exp(-ips*dt);if(Math.random()<prob)rotationSense*=-1;deltaRotation.setFromAxisAngle(rotationAxis,controls.ROTATION*rotationSense*dt);entityGroup.quaternion.premultiply(deltaRotation).normalize()}for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed;satellitePos.set(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius);satelliteEuler.set(s.tiltX,0,s.tiltZ);satellitePos.applyEuler(satelliteEuler);satellites[i].position.copy(satellitePos)}cameraLight.position.copy(camera.position).add(cameraLightOffset);renderer.render(scene,camera)}animate()
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;const spacing=controls.ECART,maxRadius=spacing*controls.LIBERTE*controls.CHEVAUCHEMENT,baseSpeed=controls.V1*spacing*.42;for(let i=0;i<BODY_COUNT;i++){const relationMultiplier=1+relationIndividualLevels[i]/100,speed=baseSpeed*relationMultiplier;if(speed>0){wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i].lerp(randomDirection(),.65).normalize()}const d=travel[i].length(),normalized=maxRadius>0?d/maxRadius:0,returnStrength=THREE.MathUtils.smoothstep(normalized,.55,1);inward.copy(travel[i]);if(inward.lengthSq()>.000001)inward.normalize().multiplyScalar(-1);else inward.set(0,0,0);steer.copy(wanderTargets[i]).multiplyScalar(.30);steer.addScaledVector(inward,returnStrength*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],speed*dt);if(travel[i].length()>maxRadius){travel[i].setLength(maxRadius);directions[i].lerp(inward,.06).normalize()}}marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])}if(controls.ROTATION>0){rotationAxisClock-=dt;if(rotationAxisClock<=0){rotationAxisClock=8+Math.random()*10;rotationAxisTarget.copy(randomDirection());if(rotationAxisTarget.dot(rotationAxis)<-.7)rotationAxisTarget.multiplyScalar(-1)}rotationAxis.lerp(rotationAxisTarget,1-Math.exp(-dt*.22)).normalize();const ips=controls.FREQUENCE_INVERSIONS/60,prob=1-Math.exp(-ips*dt);if(Math.random()<prob)rotationSense*=-1;deltaRotation.setFromAxisAngle(rotationAxis,controls.ROTATION*rotationSense*dt);entityGroup.quaternion.premultiply(deltaRotation).normalize()}for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed;satellitePos.set(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius);satelliteEuler.set(s.tiltX,0,s.tiltZ);satellitePos.applyEuler(satelliteEuler);satellites[i].position.copy(satellitePos)}cameraLight.position.copy(camera.position).add(cameraLightOffset);renderer.render(scene,camera)}animate()
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
