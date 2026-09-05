@@ -41,7 +41,7 @@ function makeBodyCenters() {
 
 const controls = {
   ECART: 19,
-  TAILLE_BILLES: 0.72,
+  TAILLE_BILLES: 0.68,
   V1: 0.20,
   LIBERTE: 0.30,
   CAMERA: 430,
@@ -52,18 +52,26 @@ const centers = makeBodyCenters()
 const marbleGeometry = new THREE.SphereGeometry(6, 28, 20)
 const marbleMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f3f3, roughness: 0.36, metalness: 0.02 })
 const marbles = []
-
-// Chaque bille possède sa propre direction aléatoire, mais toutes partagent exactement la même vitesse V1.
 const directions = []
 const travel = []
+const randomSteer = []
+
+function randomDirection() {
+  return new THREE.Vector3(
+    Math.random() * 2 - 1,
+    Math.random() * 2 - 1,
+    Math.random() * 2 - 1
+  ).normalize()
+}
+
 for (let i = 0; i < BODY_COUNT; i++) {
   const mesh = new THREE.Mesh(marbleGeometry, marbleMaterial)
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   scene.add(mesh)
   marbles.push(mesh)
 
-  const dir = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
-  directions.push(dir)
+  directions.push(randomDirection())
+  randomSteer.push(randomDirection())
   travel.push(new THREE.Vector3())
 }
 
@@ -103,37 +111,53 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes — mouvement aléatoire / vitesse commune'
-Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.55)', font:'12px Arial', pointerEvents:'none' })
+label.textContent = 'ENTITY — 200 billes — trajectoires courbes / vitesse commune'
+Object.assign(label.style, {
+  position:'fixed', left:'14px', bottom:'12px',
+  color:'rgba(255,255,255,.55)', font:'12px Arial', pointerEvents:'none'
+})
 document.body.appendChild(label)
 
 const clock = new THREE.Clock()
-const temp = new THREE.Vector3()
-
-function randomDirection() {
-  return new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
-}
+const inward = new THREE.Vector3()
+const steer = new THREE.Vector3()
+let steerTimer = 0
 
 function animate() {
   requestAnimationFrame(animate)
+
   const dt = Math.min(clock.getDelta(), 0.04)
   const spacing = controls.ECART
   const radius = spacing * controls.LIBERTE
   const speed = controls.V1 * spacing * 0.42
 
+  steerTimer += dt
+  if (steerTimer > 0.75) {
+    steerTimer = 0
+    for (let i = 0; i < BODY_COUNT; i++) {
+      randomSteer[i].lerp(randomDirection(), 0.45).normalize()
+    }
+  }
+
   for (let i = 0; i < BODY_COUNT; i++) {
     if (speed > 0) {
-      // Déplacement rectiligne local à vitesse identique.
+      const d = travel[i].length()
+      const edge = THREE.MathUtils.smoothstep(d / radius, 0.55, 1.0)
+
+      inward.copy(travel[i])
+      if (inward.lengthSq() > 0.000001) inward.normalize().multiplyScalar(-1)
+
+      // Courbure continue : légère dérive aléatoire + rappel progressif vers le centre.
+      steer.copy(randomSteer[i]).multiplyScalar(0.22)
+      steer.addScaledVector(inward, edge * 1.35)
+
+      directions[i].addScaledVector(steer, dt).normalize()
       travel[i].addScaledVector(directions[i], speed * dt)
 
-      // Bord de cellule doux : on choisit une nouvelle direction aléatoire orientée vers l'intérieur.
-      const d = travel[i].length()
-      if (d > radius) {
+      // Filet de sécurité invisible : aucune cassure de trajectoire.
+      if (travel[i].length() > radius) {
         travel[i].setLength(radius)
-        const inward = temp.copy(travel[i]).normalize().multiplyScalar(-1)
-        const rnd = randomDirection()
-        if (rnd.dot(inward) < 0) rnd.multiplyScalar(-1)
-        directions[i].copy(rnd.addScaledVector(inward, 0.65).normalize())
+        directions[i].lerp(inward, 0.08).normalize()
       }
     }
 
