@@ -82,18 +82,24 @@ for (let p = 0; p < personality.length; p++) {
   ids.forEach((id, k) => individualLevels[id] = THREE.MathUtils.clamp(personality[p].level + deviations[k] - meanDeviation, 0, 100))
 }
 
-function personalityMaterial(index) {
+function personalityColor(index) {
   const p = personality[assignments[index]]
-  const intensity = individualLevels[index] / 100
-  // Base transparente : la teinte ne se mélange plus au blanc.
-  // Le pourcentage individuel fait émerger progressivement la couleur via l'opacité.
+  const vivid = new THREE.Color(p.color)
+  const hsl = {}
+  vivid.getHSL(hsl)
+  // 0 % psychologique correspond visuellement à environ 40 % de notre ancien nuancier.
+  // La luminosité reste celle de la couleur de référence ; seule la saturation va de 40 % à 100 %.
+  const saturation = THREE.MathUtils.lerp(0.40, 1.0, individualLevels[index] / 100)
+  return new THREE.Color().setHSL(hsl.h, saturation, hsl.l)
+}
+
+function personalityMaterial(index) {
   return new THREE.MeshStandardMaterial({
-    color: new THREE.Color(p.color),
+    color: personalityColor(index),
     roughness: 0.36,
     metalness: 0.02,
-    transparent: true,
-    opacity: intensity,
-    depthWrite: false
+    transparent: false,
+    opacity: 1
   })
 }
 
@@ -177,7 +183,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — personnalité : teinte pure sur base transparente, opacité = valeur individuelle'
+label.textContent = 'ENTITY — personnalité : billes opaques, couleur pâle → vive selon la valeur individuelle'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
