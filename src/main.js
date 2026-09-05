@@ -119,7 +119,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — rotation organique avec inversions rares'
+label.textContent = 'ENTITY — rotation organique avec inversions sèches rares'
 Object.assign(label.style, {
   position:'fixed', left:'14px', bottom:'12px',
   color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none'
@@ -134,11 +134,9 @@ const rotationAxisTarget = randomDirection()
 const deltaRotation = new THREE.Quaternion()
 let rotationAxisClock = 8 + Math.random() * 8
 
-// Sens de rotation : +1 la plupart du temps, -1 parfois.
-// L'inversion est rare et passe progressivement par 0 pour éviter tout changement brutal.
+// Sens de rotation courant. L'inversion, lorsqu'elle arrive, est volontairement instantanée.
 let rotationSense = 1
-let rotationSenseTarget = 1
-let rotationSenseClock = 22 + Math.random() * 28
+let reverseCheckClock = 3 + Math.random() * 5
 
 function animate() {
   requestAnimationFrame(animate)
@@ -189,13 +187,13 @@ function animate() {
 
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
 
-    rotationSenseClock -= dt
-    if (rotationSenseClock <= 0) {
-      rotationSenseClock = 22 + Math.random() * 28
-      // Environ 25 % de chances d'inverser le sens ; sinon on conserve le sens courant.
-      if (Math.random() < 0.25) rotationSenseTarget *= -1
+    // Toutes les 3 à 8 secondes on "teste" une inversion.
+    // Elle reste rare (20 %), mais si elle arrive le changement de sens est immédiat.
+    reverseCheckClock -= dt
+    if (reverseCheckClock <= 0) {
+      reverseCheckClock = 3 + Math.random() * 5
+      if (Math.random() < 0.20) rotationSense *= -1
     }
-    rotationSense = THREE.MathUtils.lerp(rotationSense, rotationSenseTarget, 1 - Math.exp(-dt * 0.20))
 
     deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * rotationSense * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
