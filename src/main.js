@@ -9,6 +9,8 @@ const app = document.querySelector('#app')
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
 app.appendChild(renderer.domElement)
 
 const scene = new THREE.Scene()
@@ -52,6 +54,7 @@ const controls = {
   ROTATION: 0.11,
   FREQUENCE_INVERSIONS: 12,
   BRILLANCE: 0.35,
+  INTENSITE_LUMIERE: 2.2,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -128,6 +131,8 @@ function randomDirection() {
 for (let i = 0; i < BODY_COUNT; i++) {
   const mesh = new THREE.Mesh(marbleGeometry, personalityMaterial(i))
   mesh.scale.setScalar(controls.TAILLE_BILLES)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   entityGroup.add(mesh)
   marbles.push(mesh)
   directions.push(randomDirection())
@@ -149,6 +154,8 @@ const satelliteData = [
 for (let i = 0; i < SATELLITE_COUNT; i++) {
   const mesh = new THREE.Mesh(marbleGeometry, personalityMaterial(i))
   mesh.scale.setScalar(controls.TAILLE_BILLES)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   satelliteGroup.add(mesh)
   satellites.push(mesh)
 }
@@ -160,13 +167,21 @@ const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: t
 for (let i = 0; i < BODY_COUNT; i++) cellGroup.add(new THREE.Mesh(cellGeometry, cellMaterial))
 cellGroup.visible = false
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x20242a, 2.2))
-const key = new THREE.DirectionalLight(0xffffff, 3.2)
-key.position.set(-2, 4, 5)
-scene.add(key)
-const rim = new THREE.DirectionalLight(0xffffff, 1.4)
-rim.position.set(5, -2, -4)
-scene.add(rim)
+// Faible lumière ambiante uniquement pour éviter que les faces dans l'ombre deviennent totalement noires.
+scene.add(new THREE.HemisphereLight(0xffffff, 0x111318, 0.28))
+
+// Source principale : placée au niveau de la caméra et dirigée vers Entity.
+const cameraLight = new THREE.SpotLight(0xffffff, controls.INTENSITE_LUMIERE, 0, Math.PI / 3, 0.85, 0)
+cameraLight.position.copy(camera.position)
+cameraLight.target.position.set(0, 0, 0)
+cameraLight.castShadow = true
+cameraLight.shadow.mapSize.set(2048, 2048)
+cameraLight.shadow.camera.near = 100
+cameraLight.shadow.camera.far = 800
+cameraLight.shadow.bias = -0.00035
+cameraLight.shadow.normalBias = 0.02
+scene.add(cameraLight)
+scene.add(cameraLight.target)
 
 function updateLayout() {
   const spacing = controls.ECART
@@ -181,20 +196,26 @@ function updateLayout() {
 }
 updateLayout()
 
+function updateCameraAndLight() {
+  camera.position.z = controls.CAMERA
+  cameraLight.position.copy(camera.position)
+}
+
 const gui = new GUI({ title: 'ENTITY — PERSONNALITÉ / COULEUR' })
 gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
 gui.add(controls, 'FREQUENCE_INVERSIONS', 0, 12, 0.1).name('FREQUENCE INVERSIONS / MIN')
 gui.add(controls, 'BRILLANCE', 0, 1, 0.01).name('BRILLANCE BILLES').onChange(updateShine)
+gui.add(controls, 'INTENSITE_LUMIERE', 0, 6, 0.05).name('INTENSITÉ LUMIÈRE').onChange(v => cameraLight.intensity = v)
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
 gui.add(controls, 'LIBERTE', 0.05, 0.45, 0.01).name('LIBERTE CELLULE').onChange(updateLayout)
 gui.add(controls, 'CHEVAUCHEMENT', 1.0, 1.8, 0.05).name('CHEVAUCHEMENT').onChange(updateLayout)
-gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.position.z = v)
+gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAndLight)
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — personnalité : billes opaques, couleur franche → vive ; brillance réglable'
+label.textContent = 'ENTITY — lumière caméra + ombres douces ; brillance et intensité réglables'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
@@ -268,6 +289,7 @@ function animate() {
     satellites[i].position.copy(satellitePos)
   }
 
+  cameraLight.position.copy(camera.position)
   renderer.render(scene, camera)
 }
 animate()
