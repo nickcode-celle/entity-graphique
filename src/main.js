@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
-import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg'
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js'
 import './style.css'
 
 const app=document.querySelector('#app')
@@ -21,68 +21,81 @@ const shellMaterial=new THREE.MeshPhysicalMaterial({
 })
 const innerMaterial=new THREE.MeshStandardMaterial({color:0x010101,roughness:1,metalness:0})
 
-// Construction hybride :
-// 1) vraie coque CSG perforée ; 2) lèvres toriques réelles autour des ouvertures.
-// Les lèvres arrondissent les cloisons : on obtient une mousse/alvéole et non un simple perçage.
-function makeCellularShell(){
- const evaluator=new Evaluator();evaluator.useGroups=false
- let shellBrush=new Brush(new THREE.SphereGeometry(6,128,96));shellBrush.updateMatrixWorld(true)
- const innerBrush=new Brush(new THREE.SphereGeometry(5.18,112,84));innerBrush.updateMatrixWorld(true)
- shellBrush=evaluator.evaluate(shellBrush,innerBrush,SUBTRACTION)
+// Gastronomie : vraie surface implicite alvéolaire.
+// On ne perce plus une sphère puis on ne rajoute plus d'anneaux.
+// La coque ET les bords des cavités sont une seule isosurface lissée.
+const RES=74
+const field=new MarchingCubes(RES,shellMaterial,false,false,300000)
+field.isolation=0
+field.scale.setScalar(7.65)
+field.castShadow=field.receiveShadow=true
+root.add(field)
 
- const holes=[]
- const count=104,golden=Math.PI*(3-Math.sqrt(5));let seed=0x9341ba
- const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
- const zAxis=new THREE.Vector3(0,0,1)
+const pores=[]
+const count=96,golden=Math.PI*(3-Math.sqrt(5));let seed=0x3fa921
+const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296}
+for(let i=0;i<count;i++){
+ const y=1-((i+.5)*2)/count
+ const rr=Math.sqrt(Math.max(0,1-y*y))
+ const theta=i*golden+(rnd()-.5)*.78
+ const dir=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).normalize()
+ const u=rnd();let mouth
+ if(u<.15) mouth=THREE.MathUtils.lerp(.070,.086,rnd())
+ else if(u<.82) mouth=THREE.MathUtils.lerp(.088,.116,rnd())
+ else mouth=THREE.MathUtils.lerp(.118,.142,rnd())
+ pores.push({
+  dir,
+  center:dir.clone().multiplyScalar(.735+THREE.MathUtils.lerp(-.012,.012,rnd())),
+  mouth,
+  oval:THREE.MathUtils.lerp(.84,1.18,rnd()),
+  depth:mouth*THREE.MathUtils.lerp(1.45,1.85,rnd())
+ })
+}
 
- for(let i=0;i<count;i++){
-  const y=1-((i+.5)*2)/count
-  const rr=Math.sqrt(Math.max(0,1-y*y))
-  const theta=i*golden+(rnd()-.5)*.72
-  const dir=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).normalize()
+function smoothMin(a,b,k){
+ const h=Math.max(k-Math.abs(a-b),0)/k
+ return Math.min(a,b)-h*h*k*.25
+}
 
-  const u=rnd();let mouth
-  if(u<.13) mouth=THREE.MathUtils.lerp(.33,.44,rnd())
-  else if(u<.78) mouth=THREE.MathUtils.lerp(.48,.66,rnd())
-  else mouth=THREE.MathUtils.lerp(.69,.88,rnd())
-
-  const oval=THREE.MathUtils.lerp(.84,1.16,rnd())
-  const twist=(rnd()-.5)*Math.PI
-  const depth=THREE.MathUtils.lerp(1.55,2.05,rnd())
-
-  const cutter=new Brush(new THREE.SphereGeometry(1,24,18))
-  cutter.scale.set(mouth,mouth*oval,mouth*depth)
-  cutter.quaternion.setFromUnitVectors(zAxis,dir)
-  cutter.rotateOnAxis(dir,twist)
-  cutter.position.copy(dir).multiplyScalar(5.45+THREE.MathUtils.lerp(-.06,.05,rnd()))
-  cutter.updateMatrixWorld(true)
-  shellBrush=evaluator.evaluate(shellBrush,cutter,SUBTRACTION)
-
-  holes.push({dir,mouth,oval,twist})
+function buildField(){
+ field.reset()
+ const R=.785,Rin=.585,k=.027
+ const p=new THREE.Vector3(),q=new THREE.Vector3()
+ for(let z=1;z<RES-1;z++){
+  const pz=(z/(RES-1))*2-1
+  for(let y=1;y<RES-1;y++){
+   const py=(y/(RES-1))*2-1
+   for(let x=1;x<RES-1;x++){
+    const px=(x/(RES-1))*2-1
+    const r=Math.hypot(px,py,pz)
+    // positif uniquement dans l'épaisseur de la coque
+    let v=Math.min(R-r,r-Rin)
+    // inutile de tester les pores loin de la coque
+    if(v>-0.075){
+     p.set(px,py,pz)
+     for(const pore of pores){
+      q.copy(p).sub(pore.center)
+      const radial=q.dot(pore.dir)
+      const t2=Math.max(0,q.lengthSq()-radial*radial)
+      // ellipsoïde radial : ouverture arrondie, cavité profonde
+      const e=Math.sqrt(t2/(pore.mouth*pore.mouth)+(radial*radial)/(pore.depth*pore.depth))-1
+      const outside=e*pore.mouth
+      // intersection lissée coque ∩ extérieur du pore : le raccord devient une lèvre organique
+      v=smoothMin(v,outside,k)
+     }
+    }
+    field.setCell(x,y,z,v)
+   }
+  }
  }
-
- shellBrush.geometry.computeVertexNormals();shellBrush.geometry.computeBoundingSphere()
- return {geometry:shellBrush.geometry,holes}
+ // léger lissage volumétrique : supprime l'effet "trou usiné" sans effacer les cavités
+ field.blur(1)
+ field.update()
 }
+buildField()
 
-const cellular=makeCellularShell()
-const shell=new THREE.Mesh(cellular.geometry,shellMaterial);shell.castShadow=shell.receiveShadow=true;root.add(shell)
-
-// Lèvres arrondies : elles sont de la vraie géométrie et fusionnent visuellement avec la coque.
-const zAxis=new THREE.Vector3(0,0,1)
-for(const h of cellular.holes){
- const ringGeo=new THREE.TorusGeometry(h.mouth*.86,h.mouth*.17,12,34)
- const ring=new THREE.Mesh(ringGeo,shellMaterial)
- ring.quaternion.setFromUnitVectors(zAxis,h.dir)
- ring.rotateOnAxis(h.dir,h.twist)
- ring.scale.set(1,h.oval,1)
- ring.position.copy(h.dir).multiplyScalar(5.93)
- ring.castShadow=ring.receiveShadow=true
- root.add(ring)
-}
-
-// Fond sombre très proche derrière les parois pour renforcer la profondeur réelle des alvéoles.
-const core=new THREE.Mesh(new THREE.SphereGeometry(4.95,96,72),innerMaterial)
+// cœur sombre derrière la coque : uniquement pour donner de la profondeur aux alvéoles
+const core=new THREE.Mesh(new THREE.SphereGeometry(4.36,96,72),innerMaterial)
 core.castShadow=core.receiveShadow=true;root.add(core)
 
 const hemi=new THREE.HemisphereLight(0xffffff,0x111419,controls.LUMIERE_AMBIANTE);scene.add(hemi)
@@ -98,7 +111,7 @@ function updateShine(){
 }
 updateShine()
 
-const gui=new GUI({title:'ENTITY — GASTRONOMIE / ALVÉOLAIRE'})
+const gui=new GUI({title:'ENTITY — GASTRONOMIE / IMPLICITE'})
 gui.add(controls,'ROTATION',0,1,.01).name('ROTATION')
 gui.add(controls,'BRILLANCE',0,1,.01).name('BRILLANCE').onChange(updateShine)
 gui.add(controls,'INTENSITE_LUMIERE',0,8,.05).name('INTENSITÉ LUMIÈRE').onChange(v=>key.intensity=v)
@@ -106,7 +119,7 @@ gui.add(controls,'LUMIERE_AMBIANTE',0,2.5,.05).name('LUMIÈRE AMBIANTE').onChang
 gui.add(controls,'CAMERA',10,50,.5).name('CAMERA').onChange(v=>camera.position.z=v)
 
 const tag=document.createElement('div')
-tag.textContent='GASTRONOMIE / SAVEURS — coque perforée + cloisons arrondies 3D'
+tag.textContent='GASTRONOMIE / SAVEURS — surface implicite alvéolaire, une seule géométrie'
 Object.assign(tag.style,{position:'fixed',left:'16px',bottom:'14px',color:'rgba(255,255,255,.72)',font:'12px Arial',letterSpacing:'.08em'})
 document.body.appendChild(tag)
 
