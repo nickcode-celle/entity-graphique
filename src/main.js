@@ -87,9 +87,14 @@ function personalityColor(index) {
   const vivid = new THREE.Color(p.color)
   const hsl = {}
   vivid.getHSL(hsl)
-  // 0 % psychologique correspond visuellement à environ 40 % de notre ancien nuancier.
-  // La luminosité reste celle de la couleur de référence ; seule la saturation va de 40 % à 100 %.
-  const saturation = THREE.MathUtils.lerp(0.40, 1.0, individualLevels[index] / 100)
+
+  const level = individualLevels[index] / 100
+  // Plage volontairement plus franche : aucune couleur pastel.
+  // 0 % reste déjà nettement coloré ; la progression est accentuée dans la zone 15–35 %.
+  const saturation = level <= 0.40
+    ? THREE.MathUtils.lerp(0.62, 0.88, level / 0.40)
+    : THREE.MathUtils.lerp(0.88, 1.0, (level - 0.40) / 0.60)
+
   return new THREE.Color().setHSL(hsl.h, saturation, hsl.l)
 }
 
@@ -183,7 +188,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — personnalité : billes opaques, couleur pâle → vive selon la valeur individuelle'
+label.textContent = 'ENTITY — personnalité : billes opaques, couleur franche → vive selon la valeur individuelle'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
