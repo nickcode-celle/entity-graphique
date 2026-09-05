@@ -17,21 +17,35 @@ scene.background = new THREE.Color(0x16181b)
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000)
 camera.position.z = 420
 
-// 93 centres pris dans une grille cubique, en gardant les points les plus proches
-// du centre. Les cellules sont invisibles : seuls leurs centres structurent le corps.
-function makeBodyCenters(count) {
-  const candidates = []
-  const radius = 3
-  for (let x = -radius; x <= radius; x++) {
-    for (let y = -radius; y <= radius; y++) {
-      for (let z = -radius; z <= radius; z++) {
-        const d2 = x*x + y*y + z*z
-        candidates.push({ x, y, z, d2, tie: Math.random() })
-      }
-    }
+function halton(index, base) {
+  let f = 1, r = 0
+  while (index > 0) {
+    f /= base
+    r += f * (index % base)
+    index = Math.floor(index / base)
   }
-  candidates.sort((a,b) => a.d2 - b.d2 || a.tie - b.tie)
-  return candidates.slice(0, count).map(p => new THREE.Vector3(p.x, p.y, p.z))
+  return r
+}
+
+// Distribution volumique quasi-uniforme dans une sphère, sans axes ni rangées visibles.
+function makeBodyCenters(count) {
+  const pts = []
+  const R = 3.0
+  for (let i = 1; i <= count; i++) {
+    const u = halton(i, 2)
+    const v = halton(i, 3)
+    const w = halton(i, 5)
+    const r = R * Math.cbrt(u)
+    const cosTheta = 1 - 2 * v
+    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta))
+    const phi = Math.PI * 2 * w
+    pts.push(new THREE.Vector3(
+      r * sinTheta * Math.cos(phi),
+      r * sinTheta * Math.sin(phi),
+      r * cosTheta
+    ))
+  }
+  return pts
 }
 
 const controls = {
@@ -39,6 +53,7 @@ const controls = {
   TAILLE_BILLES: 1,
   V1: 0,
   LIBERTE: 0.34,
+  SATELLITES: 3.45,
   CAMERA: 420,
   VOIR_CELLULES: false
 }
@@ -63,18 +78,24 @@ for (let i = 0; i < TOTAL; i++) {
   })
 }
 
-// Sept satellites : directions et distances fixes pour cette exécution.
-const satelliteAnchors = []
+// Sept satellites en périphérie immédiate, avec une légère variation de distance.
+const satelliteDirections = []
+const goldenAngle = Math.PI * (3 - Math.sqrt(5))
 for (let i = 0; i < SATELLITE_COUNT; i++) {
-  const v = new THREE.Vector3().randomDirection()
-  const r = 4.5 + Math.random() * 2.2
-  satelliteAnchors.push(v.multiplyScalar(r))
+  const y = 1 - (i + 0.5) * (2 / SATELLITE_COUNT)
+  const radius = Math.sqrt(1 - y * y)
+  const theta = i * goldenAngle + 0.63
+  satelliteDirections.push(new THREE.Vector3(
+    Math.cos(theta) * radius,
+    y,
+    Math.sin(theta) * radius
+  ).normalize())
 }
 
 const cellGroup = new THREE.Group()
 scene.add(cellGroup)
-const cellGeometry = new THREE.BoxGeometry(1,1,1)
-const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: true, transparent: true, opacity: 0.16 })
+const cellGeometry = new THREE.SphereGeometry(0.5, 10, 8)
+const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: true, transparent: true, opacity: 0.13 })
 for (let i = 0; i < BODY_COUNT; i++) {
   const c = new THREE.Mesh(cellGeometry, cellMaterial)
   cellGroup.add(c)
@@ -91,20 +112,21 @@ scene.add(rim)
 
 function updateStaticLayout() {
   const spacing = controls.ECART
-  const marbleScale = controls.TAILLE_BILLES
-  marbles.forEach(m => m.scale.setScalar(marbleScale))
+  marbles.forEach(m => m.scale.setScalar(controls.TAILLE_BILLES))
 
   for (let i = 0; i < BODY_COUNT; i++) {
     const p = centers[i]
-    if (controls.V1 === 0) marbles[i].position.set(p.x * spacing, p.y * spacing, p.z * spacing)
+    if (controls.V1 === 0) marbles[i].position.copy(p).multiplyScalar(spacing)
     const cell = cellGroup.children[i]
-    cell.position.set(p.x * spacing, p.y * spacing, p.z * spacing)
-    cell.scale.setScalar(spacing)
+    cell.position.copy(p).multiplyScalar(spacing)
+    cell.scale.setScalar(spacing * controls.LIBERTE * 2)
   }
 
   for (let i = 0; i < SATELLITE_COUNT; i++) {
-    const p = satelliteAnchors[i]
-    if (controls.V1 === 0) marbles[BODY_COUNT+i].position.set(p.x * spacing, p.y * spacing, p.z * spacing)
+    const d = satelliteDirections[i]
+    const variation = 0.88 + i * 0.035
+    const p = d.clone().multiplyScalar(controls.SATELLITES * variation)
+    if (controls.V1 === 0) marbles[BODY_COUNT + i].position.copy(p).multiplyScalar(spacing)
   }
 }
 updateStaticLayout()
@@ -113,7 +135,8 @@ const gui = new GUI({ title: 'ENTITY — SPHERE 93 + 7' })
 gui.add(controls, 'ECART', 16, 36, 0.5).name('TAILLE / ECART').onChange(updateStaticLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.5, 2.5, 0.05).name('TAILLE BILLES').onChange(updateStaticLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
-gui.add(controls, 'LIBERTE', 0.05, 0.48, 0.01).name('LIBERTE CELLULE')
+gui.add(controls, 'LIBERTE', 0.05, 0.48, 0.01).name('LIBERTE CELLULE').onChange(updateStaticLayout)
+gui.add(controls, 'SATELLITES', 3.05, 4.2, 0.05).name('DISTANCE SATELLITES').onChange(updateStaticLayout)
 gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.position.z = v)
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
@@ -133,22 +156,25 @@ function animate() {
   if (speed > 0) {
     for (let i = 0; i < BODY_COUNT; i++) {
       const p = centers[i], q = phases[i]
-      // Mouvement continu, sans rebond sur les limites de la cellule.
       const tt = t * speed
       marbles[i].position.set(
-        p.x*spacing + Math.sin(tt*q.sx + q.a) * amp,
-        p.y*spacing + Math.sin(tt*q.sy + q.b) * amp,
-        p.z*spacing + Math.sin(tt*q.sz + q.c) * amp
+        p.x * spacing + Math.sin(tt * q.sx + q.a) * amp,
+        p.y * spacing + Math.sin(tt * q.sy + q.b) * amp,
+        p.z * spacing + Math.sin(tt * q.sz + q.c) * amp
       )
     }
+
     for (let i = 0; i < SATELLITE_COUNT; i++) {
-      const idx = BODY_COUNT+i, p = satelliteAnchors[i], q = phases[idx]
-      const tt = t * speed * 0.55
-      const satelliteAmp = spacing * 0.45
+      const idx = BODY_COUNT + i
+      const q = phases[idx]
+      const variation = 0.88 + i * 0.035
+      const base = satelliteDirections[i].clone().multiplyScalar(controls.SATELLITES * variation * spacing)
+      const tt = t * speed * 0.45
+      const satelliteAmp = spacing * 0.18
       marbles[idx].position.set(
-        p.x*spacing + Math.sin(tt*q.sx + q.a)*satelliteAmp,
-        p.y*spacing + Math.sin(tt*q.sy + q.b)*satelliteAmp,
-        p.z*spacing + Math.sin(tt*q.sz + q.c)*satelliteAmp
+        base.x + Math.sin(tt * q.sx + q.a) * satelliteAmp,
+        base.y + Math.sin(tt * q.sy + q.b) * satelliteAmp,
+        base.z + Math.sin(tt * q.sz + q.c) * satelliteAmp
       )
     }
   }
