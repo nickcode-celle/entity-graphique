@@ -51,6 +51,7 @@ const controls = {
   CHEVAUCHEMENT: 1.45,
   ROTATION: 0.11,
   FREQUENCE_INVERSIONS: 12,
+  BRILLANCE: 0.35,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -87,25 +88,29 @@ function personalityColor(index) {
   const vivid = new THREE.Color(p.color)
   const hsl = {}
   vivid.getHSL(hsl)
-
   const level = individualLevels[index] / 100
-  // Plage volontairement plus franche : aucune couleur pastel.
-  // 0 % reste déjà nettement coloré ; la progression est accentuée dans la zone 15–35 %.
   const saturation = level <= 0.40
     ? THREE.MathUtils.lerp(0.62, 0.88, level / 0.40)
     : THREE.MathUtils.lerp(0.88, 1.0, (level - 0.40) / 0.60)
-
   return new THREE.Color().setHSL(hsl.h, saturation, hsl.l)
 }
 
+const allMarbleMaterials = []
 function personalityMaterial(index) {
-  return new THREE.MeshStandardMaterial({
+  const material = new THREE.MeshStandardMaterial({
     color: personalityColor(index),
-    roughness: 0.36,
+    roughness: 1 - controls.BRILLANCE,
     metalness: 0.02,
     transparent: false,
     opacity: 1
   })
+  allMarbleMaterials.push(material)
+  return material
+}
+
+function updateShine() {
+  const roughness = 1 - controls.BRILLANCE
+  for (const material of allMarbleMaterials) material.roughness = roughness
 }
 
 const centers = makeBodyCenters()
@@ -179,6 +184,7 @@ updateLayout()
 const gui = new GUI({ title: 'ENTITY — PERSONNALITÉ / COULEUR' })
 gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
 gui.add(controls, 'FREQUENCE_INVERSIONS', 0, 12, 0.1).name('FREQUENCE INVERSIONS / MIN')
+gui.add(controls, 'BRILLANCE', 0, 1, 0.01).name('BRILLANCE BILLES').onChange(updateShine)
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
@@ -188,7 +194,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — personnalité : billes opaques, couleur franche → vive selon la valeur individuelle'
+label.textContent = 'ENTITY — personnalité : billes opaques, couleur franche → vive ; brillance réglable'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
