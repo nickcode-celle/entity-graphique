@@ -63,14 +63,14 @@ const controls = {
 const personality = [
   { name: 'Curiosité', color: 0xffd400, level: 31 },
   { name: 'Humour', color: 0xff7a00, level: 24 },
-  { name: 'Franchise', color: 0xff2d2d, level: 28 },
-  { name: 'Chaleur', color: 0xffb000, level: 33 },
-  { name: 'Réserve', color: 0x2878ff, level: 19 },
-  { name: 'Contradiction', color: 0x7d3cff, level: 22 },
-  { name: 'Imagination', color: 0xff20d6, level: 30 },
-  { name: 'Spontanéité', color: 0x42e85b, level: 26 },
-  { name: 'Sensibilité', color: 0xff72b6, level: 29 },
-  { name: 'Esprit critique', color: 0x18d8e8, level: 27 }
+  { name: 'Franchise', color: 0xe5231f, level: 28 },
+  { name: 'Chaleur', color: 0xc98a18, level: 33 },
+  { name: 'Réserve', color: 0x2468d8, level: 19 },
+  { name: 'Contradiction', color: 0x7137c8, level: 22 },
+  { name: 'Imagination', color: 0x5146e5, level: 30 },
+  { name: 'Spontanéité', color: 0x28c95b, level: 26 },
+  { name: 'Sensibilité', color: 0xe95a9d, level: 29 },
+  { name: 'Esprit critique', color: 0x13bfc8, level: 27 }
 ]
 
 const assignments = Array.from({ length: BODY_COUNT }, (_, i) => i % personality.length)
@@ -168,12 +168,9 @@ const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: t
 for (let i = 0; i < BODY_COUNT; i++) cellGroup.add(new THREE.Mesh(cellGeometry, cellMaterial))
 cellGroup.visible = false
 
-// Lumière indirecte : simule la lumière renvoyée par un environnement réel.
-// Elle éclaire doucement les zones dans l'ombre sans supprimer les ombres portées.
 const ambientLight = new THREE.HemisphereLight(0xffffff, 0x30343b, controls.LUMIERE_AMBIANTE)
 scene.add(ambientLight)
 
-// Source principale liée à la caméra, légèrement décalée pour garder les ombres visibles.
 const cameraLightOffset = new THREE.Vector3(42, 28, 0)
 const cameraLight = new THREE.SpotLight(0xffffff, controls.INTENSITE_LUMIERE, 0, Math.PI / 3.2, 0.55, 0)
 cameraLight.position.copy(camera.position).add(cameraLightOffset)
@@ -221,7 +218,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — lumière directe + lumière ambiante ; ombres portées conservées'
+label.textContent = 'ENTITY — palette personnalité distincte ; lumière directe + ambiante ; ombres conservées'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
