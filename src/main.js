@@ -119,7 +119,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — VERSION ROTATION V2 — curseur en haut du panneau'
+label.textContent = 'ENTITY — rotation organique avec inversions rares'
 Object.assign(label.style, {
   position:'fixed', left:'14px', bottom:'12px',
   color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none'
@@ -133,6 +133,12 @@ const rotationAxis = randomDirection()
 const rotationAxisTarget = randomDirection()
 const deltaRotation = new THREE.Quaternion()
 let rotationAxisClock = 8 + Math.random() * 8
+
+// Sens de rotation : +1 la plupart du temps, -1 parfois.
+// L'inversion est rare et passe progressivement par 0 pour éviter tout changement brutal.
+let rotationSense = 1
+let rotationSenseTarget = 1
+let rotationSenseClock = 22 + Math.random() * 28
 
 function animate() {
   requestAnimationFrame(animate)
@@ -173,7 +179,6 @@ function animate() {
     marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])
   }
 
-  // Rotation du corps entier. L'axe dérive lentement et continûment.
   if (controls.ROTATION > 0) {
     rotationAxisClock -= dt
     if (rotationAxisClock <= 0) {
@@ -183,7 +188,16 @@ function animate() {
     }
 
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
-    deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * dt)
+
+    rotationSenseClock -= dt
+    if (rotationSenseClock <= 0) {
+      rotationSenseClock = 22 + Math.random() * 28
+      // Environ 25 % de chances d'inverser le sens ; sinon on conserve le sens courant.
+      if (Math.random() < 0.25) rotationSenseTarget *= -1
+    }
+    rotationSense = THREE.MathUtils.lerp(rotationSense, rotationSenseTarget, 1 - Math.exp(-dt * 0.20))
+
+    deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * rotationSense * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
   }
 
