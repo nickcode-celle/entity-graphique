@@ -55,9 +55,47 @@ const controls = {
   VOIR_CELLULES: false
 }
 
+// Exemple de personnalité initiale : chaque sous-domaine reste dans la plage 15–35 %.
+const personality = [
+  { name: 'Curiosité', color: 0xffd400, level: 31 },
+  { name: 'Humour', color: 0xff7a00, level: 24 },
+  { name: 'Franchise', color: 0xff2d2d, level: 28 },
+  { name: 'Chaleur', color: 0xffb000, level: 33 },
+  { name: 'Réserve', color: 0x2878ff, level: 19 },
+  { name: 'Contradiction', color: 0x7d3cff, level: 22 },
+  { name: 'Imagination', color: 0xff20d6, level: 30 },
+  { name: 'Spontanéité', color: 0x42e85b, level: 26 },
+  { name: 'Sensibilité', color: 0xff72b6, level: 29 },
+  { name: 'Esprit critique', color: 0x18d8e8, level: 27 }
+]
+
+// 200 billes : 20 par sous-domaine. Mélange déterministe à chaque création de cette démo.
+const assignments = Array.from({ length: BODY_COUNT }, (_, i) => i % personality.length)
+for (let i = assignments.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1))
+  ;[assignments[i], assignments[j]] = [assignments[j], assignments[i]]
+}
+
+// Valeurs individuelles aléatoires ±5 autour du niveau du sous-domaine,
+// puis correction afin que la moyenne de chaque groupe soit exactement le niveau global.
+const individualLevels = new Array(BODY_COUNT)
+for (let p = 0; p < personality.length; p++) {
+  const ids = assignments.map((a, i) => a === p ? i : -1).filter(i => i >= 0)
+  const deviations = ids.map(() => Math.random() * 10 - 5)
+  const meanDeviation = deviations.reduce((a, b) => a + b, 0) / deviations.length
+  ids.forEach((id, k) => individualLevels[id] = THREE.MathUtils.clamp(personality[p].level + deviations[k] - meanDeviation, 0, 100))
+}
+
+const baseWhite = new THREE.Color(0xf3f3f3)
+function personalityColor(index) {
+  const p = personality[assignments[index]]
+  const target = new THREE.Color(p.color)
+  // Le % individuel règle la présence de la teinte : faible = proche du blanc, fort = couleur plus affirmée.
+  return baseWhite.clone().lerp(target, individualLevels[index] / 100)
+}
+
 const centers = makeBodyCenters()
 const marbleGeometry = new THREE.SphereGeometry(6, 28, 20)
-const marbleMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f3f3, roughness: 0.36, metalness: 0.02 })
 const marbles = []
 const directions = []
 const travel = []
@@ -69,7 +107,8 @@ function randomDirection() {
 }
 
 for (let i = 0; i < BODY_COUNT; i++) {
-  const mesh = new THREE.Mesh(marbleGeometry, marbleMaterial)
+  const material = new THREE.MeshStandardMaterial({ color: personalityColor(i), roughness: 0.36, metalness: 0.02 })
+  const mesh = new THREE.Mesh(marbleGeometry, material)
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   entityGroup.add(mesh)
   marbles.push(mesh)
@@ -90,7 +129,9 @@ const satelliteData = [
   { radius: 101, speed: 0.15, phase: 5.45, tiltX: -0.52, tiltZ: -0.76 }
 ]
 for (let i = 0; i < SATELLITE_COUNT; i++) {
-  const mesh = new THREE.Mesh(marbleGeometry, marbleMaterial)
+  const sourceIndex = i
+  const material = new THREE.MeshStandardMaterial({ color: personalityColor(sourceIndex), roughness: 0.36, metalness: 0.02 })
+  const mesh = new THREE.Mesh(marbleGeometry, material)
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   satelliteGroup.add(mesh)
   satellites.push(mesh)
@@ -124,7 +165,7 @@ function updateLayout() {
 }
 updateLayout()
 
-const gui = new GUI({ title: 'ENTITY — BASE 200 — REGLAGES' })
+const gui = new GUI({ title: 'ENTITY — PERSONNALITÉ / COULEUR' })
 gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
 gui.add(controls, 'FREQUENCE_INVERSIONS', 0, 12, 0.1).name('FREQUENCE INVERSIONS / MIN')
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
@@ -136,7 +177,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes + 5 satellites — fréquence d’inversion réglable'
+label.textContent = 'ENTITY — exemple de personnalité : couleur = sous-domaine, intensité = valeur individuelle'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
@@ -154,7 +195,6 @@ const satellitePos = new THREE.Vector3()
 
 function animate() {
   requestAnimationFrame(animate)
-
   const dt = Math.min(clock.getDelta(), 0.04)
   elapsed += dt
   const spacing = controls.ECART
@@ -169,19 +209,16 @@ function animate() {
         wanderClocks[i] = 0.8 + Math.random() * 2.4
         wanderTargets[i].lerp(randomDirection(), 0.65).normalize()
       }
-
       const d = travel[i].length()
       const normalized = maxRadius > 0 ? d / maxRadius : 0
       const returnStrength = THREE.MathUtils.smoothstep(normalized, 0.55, 1.0)
       inward.copy(travel[i])
       if (inward.lengthSq() > 0.000001) inward.normalize().multiplyScalar(-1)
       else inward.set(0, 0, 0)
-
       steer.copy(wanderTargets[i]).multiplyScalar(0.30)
       steer.addScaledVector(inward, returnStrength * 1.55)
       directions[i].addScaledVector(steer, dt).normalize()
       travel[i].addScaledVector(directions[i], speed * dt)
-
       if (travel[i].length() > maxRadius) {
         travel[i].setLength(maxRadius)
         directions[i].lerp(inward, 0.06).normalize()
@@ -198,11 +235,9 @@ function animate() {
       if (rotationAxisTarget.dot(rotationAxis) < -0.7) rotationAxisTarget.multiplyScalar(-1)
     }
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
-
     const inversionsPerSecond = controls.FREQUENCE_INVERSIONS / 60
     const reverseProbabilityThisFrame = 1 - Math.exp(-inversionsPerSecond * dt)
     if (Math.random() < reverseProbabilityThisFrame) rotationSense *= -1
-
     deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * rotationSense * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
   }
