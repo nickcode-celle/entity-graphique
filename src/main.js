@@ -55,6 +55,7 @@ const controls = {
   FREQUENCE_INVERSIONS: 12,
   BRILLANCE: 0.35,
   INTENSITE_LUMIERE: 2.2,
+  LUMIERE_AMBIANTE: 0.55,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -167,12 +168,12 @@ const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: t
 for (let i = 0; i < BODY_COUNT; i++) cellGroup.add(new THREE.Mesh(cellGeometry, cellMaterial))
 cellGroup.visible = false
 
-// Une faible ambiance conserve un minimum de lisibilité dans les zones très ombrées.
-scene.add(new THREE.HemisphereLight(0xffffff, 0x0b0d10, 0.12))
+// Lumière indirecte : simule la lumière renvoyée par un environnement réel.
+// Elle éclaire doucement les zones dans l'ombre sans supprimer les ombres portées.
+const ambientLight = new THREE.HemisphereLight(0xffffff, 0x30343b, controls.LUMIERE_AMBIANTE)
+scene.add(ambientLight)
 
-// La lumière reste liée à la caméra mais est légèrement décalée.
-// Si elle est exactement au même point que l'œil, l'ombre d'une bille tombe pile derrière elle
-// et devient presque invisible pour l'observateur. Ce petit décalage rend les ombres portées visibles.
+// Source principale liée à la caméra, légèrement décalée pour garder les ombres visibles.
 const cameraLightOffset = new THREE.Vector3(42, 28, 0)
 const cameraLight = new THREE.SpotLight(0xffffff, controls.INTENSITE_LUMIERE, 0, Math.PI / 3.2, 0.55, 0)
 cameraLight.position.copy(camera.position).add(cameraLightOffset)
@@ -210,6 +211,7 @@ gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
 gui.add(controls, 'FREQUENCE_INVERSIONS', 0, 12, 0.1).name('FREQUENCE INVERSIONS / MIN')
 gui.add(controls, 'BRILLANCE', 0, 1, 0.01).name('BRILLANCE BILLES').onChange(updateShine)
 gui.add(controls, 'INTENSITE_LUMIERE', 0, 6, 0.05).name('INTENSITÉ LUMIÈRE').onChange(v => cameraLight.intensity = v)
+gui.add(controls, 'LUMIERE_AMBIANTE', 0, 3, 0.05).name('LUMIÈRE AMBIANTE').onChange(v => ambientLight.intensity = v)
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
@@ -219,7 +221,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — ombres portées entre les billes ; lumière caméra légèrement décalée'
+label.textContent = 'ENTITY — lumière directe + lumière ambiante ; ombres portées conservées'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
