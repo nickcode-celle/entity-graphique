@@ -18,11 +18,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Blender
+      - name: Install Blender and NumPy
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender
+          sudo apt-get install -y blender python3-numpy
           blender --version
+          blender -b --python-expr "import numpy; print('NumPy', numpy.__version__)"
 
       - name: Generate GLB and verification render
         run: blender -b --python tools/blender/build_gastronomie.py
@@ -35,14 +36,14 @@ jobs:
             artifacts/gastronomie_preview.png
             public/models/gastronomie.glb
 
-      - name: Commit generated master model
+      - name: Commit generated master model and preview
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add public/models/gastronomie.glb
+          git add public/models/gastronomie.glb artifacts/gastronomie_preview.png
           if git diff --cached --quiet; then
-            echo 'No GLB change to commit'
+            echo 'No generated asset change to commit'
           else
-            git commit -m 'Generate Gastronomie master GLB'
+            git commit -m 'Generate Gastronomie master assets'
             git push
           fi
