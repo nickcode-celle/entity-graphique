@@ -23,7 +23,6 @@ for(let i=0;i<115;i++)pores.push({x:rnd()*size,y:rnd()*size,r:(.010+rnd()*.026)*
 for(const p of pores){for(const ox of [-size,0,size]){const x=p.x+ox,y=p.y,r=p.r
 let g=hg.createRadialGradient(x-r*.18,y-r*.18,r*.08,x,y,r);g.addColorStop(0,'#080808');g.addColorStop(.50,'#181818');g.addColorStop(.76,'#555555');g.addColorStop(.91,'#d8d8d8');g.addColorStop(1,'#b8b8b8');hg.fillStyle=g;hg.beginPath();hg.arc(x,y,r,0,Math.PI*2);hg.fill()
 let col=cg.createRadialGradient(x-r*.12,y-r*.12,r*.06,x,y,r);col.addColorStop(0,'#090909');col.addColorStop(.48,'#101010');col.addColorStop(.70,'#292929');col.addColorStop(.84,'#777777');col.addColorStop(.94,'#d8d8d8');col.addColorStop(1,'#ffffff');cg.fillStyle=col;cg.beginPath();cg.arc(x,y,r,0,Math.PI*2);cg.fill()}}
-}
 // micro-grain entre les cavités
 const img=hg.getImageData(0,0,size,size),d=img.data;for(let i=0;i<d.length;i+=4){const n=(rnd()-.5)*22;d[i]=d[i+1]=d[i+2]=THREE.MathUtils.clamp(d[i]+n,0,255)}hg.putImageData(img,0,0)
 const bump=new THREE.CanvasTexture(h),map=new THREE.CanvasTexture(c);for(const t of [bump,map]){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=Math.min(16,renderer.capabilities.getMaxAnisotropy())}map.colorSpace=THREE.SRGBColorSpace;bump.colorSpace=THREE.NoColorSpace;return{bump,map}}
