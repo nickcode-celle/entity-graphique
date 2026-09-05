@@ -15,7 +15,6 @@ scene.background = new THREE.Color(0x16181b)
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000)
 camera.position.z = 430
 
-// Toute ENTITY tourne comme un seul corps dans ce groupe.
 const entityGroup = new THREE.Group()
 scene.add(entityGroup)
 
@@ -43,14 +42,13 @@ function makeBodyCenters() {
   return pts
 }
 
-// Constantes retenues sur ton dernier réglage vidéo.
 const controls = {
   ECART: 28,
   TAILLE_BILLES: 0.90,
   V1: 1.00,
   LIBERTE: 0.15,
   CHEVAUCHEMENT: 1.45,
-  ROTATION: 0.18,
+  ROTATION: 0.60,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -77,7 +75,6 @@ for (let i = 0; i < BODY_COUNT; i++) {
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   entityGroup.add(mesh)
   marbles.push(mesh)
-
   directions.push(randomDirection())
   travel.push(new THREE.Vector3())
   wanderTargets.push(randomDirection())
@@ -111,33 +108,31 @@ function updateLayout() {
 }
 updateLayout()
 
-const gui = new GUI({ title: 'ENTITY — BASE 200' })
+const gui = new GUI({ title: 'ENTITY — BASE 200 — V2 ACTIVE' })
+gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
 gui.add(controls, 'LIBERTE', 0.05, 0.45, 0.01).name('LIBERTE CELLULE').onChange(updateLayout)
 gui.add(controls, 'CHEVAUCHEMENT', 1.0, 1.8, 0.05).name('CHEVAUCHEMENT').onChange(updateLayout)
-gui.add(controls, 'ROTATION', 0, 1.5, 0.01).name('V2 — ROTATION CORPS')
 gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.position.z = v)
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes — vie interne + rotation organique'
+label.textContent = 'ENTITY — VERSION ROTATION V2 — curseur en haut du panneau'
 Object.assign(label.style, {
   position:'fixed', left:'14px', bottom:'12px',
-  color:'rgba(255,255,255,.55)', font:'12px Arial', pointerEvents:'none'
+  color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none'
 })
 document.body.appendChild(label)
 
 const clock = new THREE.Clock()
 const inward = new THREE.Vector3()
 const steer = new THREE.Vector3()
-
-// Axe de rotation vivant : il dérive lentement vers de nouvelles directions.
 const rotationAxis = randomDirection()
 const rotationAxisTarget = randomDirection()
-let rotationAxisClock = 10 + Math.random() * 12
 const deltaRotation = new THREE.Quaternion()
+let rotationAxisClock = 8 + Math.random() * 8
 
 function animate() {
   requestAnimationFrame(animate)
@@ -166,7 +161,6 @@ function animate() {
 
       steer.copy(wanderTargets[i]).multiplyScalar(0.30)
       steer.addScaledVector(inward, returnStrength * 1.55)
-
       directions[i].addScaledVector(steer, dt).normalize()
       travel[i].addScaledVector(directions[i], speed * dt)
 
@@ -179,19 +173,16 @@ function animate() {
     marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])
   }
 
-  // V2 : rotation générale indépendante de V1.
-  // L'axe ne saute jamais : il glisse progressivement vers une nouvelle orientation.
+  // Rotation du corps entier. L'axe dérive lentement et continûment.
   if (controls.ROTATION > 0) {
     rotationAxisClock -= dt
     if (rotationAxisClock <= 0) {
-      rotationAxisClock = 10 + Math.random() * 14
+      rotationAxisClock = 8 + Math.random() * 10
       rotationAxisTarget.copy(randomDirection())
-      if (rotationAxisTarget.dot(rotationAxis) < -0.65) rotationAxisTarget.multiplyScalar(-1)
+      if (rotationAxisTarget.dot(rotationAxis) < -0.7) rotationAxisTarget.multiplyScalar(-1)
     }
 
-    const axisBlend = 1 - Math.exp(-dt * 0.16)
-    rotationAxis.lerp(rotationAxisTarget, axisBlend).normalize()
-
+    rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
     deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
   }
