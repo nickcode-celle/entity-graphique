@@ -167,19 +167,23 @@ const cellMaterial = new THREE.MeshBasicMaterial({ color: 0x6688aa, wireframe: t
 for (let i = 0; i < BODY_COUNT; i++) cellGroup.add(new THREE.Mesh(cellGeometry, cellMaterial))
 cellGroup.visible = false
 
-// Faible lumière ambiante uniquement pour éviter que les faces dans l'ombre deviennent totalement noires.
-scene.add(new THREE.HemisphereLight(0xffffff, 0x111318, 0.28))
+// Une faible ambiance conserve un minimum de lisibilité dans les zones très ombrées.
+scene.add(new THREE.HemisphereLight(0xffffff, 0x0b0d10, 0.12))
 
-// Source principale : placée au niveau de la caméra et dirigée vers Entity.
-const cameraLight = new THREE.SpotLight(0xffffff, controls.INTENSITE_LUMIERE, 0, Math.PI / 3, 0.85, 0)
-cameraLight.position.copy(camera.position)
+// La lumière reste liée à la caméra mais est légèrement décalée.
+// Si elle est exactement au même point que l'œil, l'ombre d'une bille tombe pile derrière elle
+// et devient presque invisible pour l'observateur. Ce petit décalage rend les ombres portées visibles.
+const cameraLightOffset = new THREE.Vector3(42, 28, 0)
+const cameraLight = new THREE.SpotLight(0xffffff, controls.INTENSITE_LUMIERE, 0, Math.PI / 3.2, 0.55, 0)
+cameraLight.position.copy(camera.position).add(cameraLightOffset)
 cameraLight.target.position.set(0, 0, 0)
 cameraLight.castShadow = true
-cameraLight.shadow.mapSize.set(2048, 2048)
+cameraLight.shadow.mapSize.set(4096, 4096)
 cameraLight.shadow.camera.near = 100
 cameraLight.shadow.camera.far = 800
-cameraLight.shadow.bias = -0.00035
-cameraLight.shadow.normalBias = 0.02
+cameraLight.shadow.bias = -0.00015
+cameraLight.shadow.normalBias = 0.015
+cameraLight.shadow.radius = 3
 scene.add(cameraLight)
 scene.add(cameraLight.target)
 
@@ -198,7 +202,7 @@ updateLayout()
 
 function updateCameraAndLight() {
   camera.position.z = controls.CAMERA
-  cameraLight.position.copy(camera.position)
+  cameraLight.position.copy(camera.position).add(cameraLightOffset)
 }
 
 const gui = new GUI({ title: 'ENTITY — PERSONNALITÉ / COULEUR' })
@@ -215,7 +219,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — lumière caméra + ombres douces ; brillance et intensité réglables'
+label.textContent = 'ENTITY — ombres portées entre les billes ; lumière caméra légèrement décalée'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
@@ -289,7 +293,7 @@ function animate() {
     satellites[i].position.copy(satellitePos)
   }
 
-  cameraLight.position.copy(camera.position)
+  cameraLight.position.copy(camera.position).add(cameraLightOffset)
   renderer.render(scene, camera)
 }
 animate()
