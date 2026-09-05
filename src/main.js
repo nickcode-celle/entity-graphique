@@ -49,13 +49,12 @@ const controls = {
   V1: 1.00,
   LIBERTE: 0.15,
   CHEVAUCHEMENT: 1.45,
-  ROTATION: 0.60,
-  FREQUENCE_INVERSIONS: 2.2,
+  ROTATION: 0.11,
+  FREQUENCE_INVERSIONS: 12,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
 
-// Exemple de personnalité initiale : chaque sous-domaine reste dans la plage 15–35 %.
 const personality = [
   { name: 'Curiosité', color: 0xffd400, level: 31 },
   { name: 'Humour', color: 0xff7a00, level: 24 },
@@ -69,15 +68,12 @@ const personality = [
   { name: 'Esprit critique', color: 0x18d8e8, level: 27 }
 ]
 
-// 200 billes : 20 par sous-domaine. Mélange déterministe à chaque création de cette démo.
 const assignments = Array.from({ length: BODY_COUNT }, (_, i) => i % personality.length)
 for (let i = assignments.length - 1; i > 0; i--) {
   const j = Math.floor(Math.random() * (i + 1))
   ;[assignments[i], assignments[j]] = [assignments[j], assignments[i]]
 }
 
-// Valeurs individuelles aléatoires ±5 autour du niveau du sous-domaine,
-// puis correction afin que la moyenne de chaque groupe soit exactement le niveau global.
 const individualLevels = new Array(BODY_COUNT)
 for (let p = 0; p < personality.length; p++) {
   const ids = assignments.map((a, i) => a === p ? i : -1).filter(i => i >= 0)
@@ -86,12 +82,19 @@ for (let p = 0; p < personality.length; p++) {
   ids.forEach((id, k) => individualLevels[id] = THREE.MathUtils.clamp(personality[p].level + deviations[k] - meanDeviation, 0, 100))
 }
 
-const baseWhite = new THREE.Color(0xf3f3f3)
-function personalityColor(index) {
+function personalityMaterial(index) {
   const p = personality[assignments[index]]
-  const target = new THREE.Color(p.color)
-  // Le % individuel règle la présence de la teinte : faible = proche du blanc, fort = couleur plus affirmée.
-  return baseWhite.clone().lerp(target, individualLevels[index] / 100)
+  const intensity = individualLevels[index] / 100
+  // Base transparente : la teinte ne se mélange plus au blanc.
+  // Le pourcentage individuel fait émerger progressivement la couleur via l'opacité.
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(p.color),
+    roughness: 0.36,
+    metalness: 0.02,
+    transparent: true,
+    opacity: intensity,
+    depthWrite: false
+  })
 }
 
 const centers = makeBodyCenters()
@@ -107,8 +110,7 @@ function randomDirection() {
 }
 
 for (let i = 0; i < BODY_COUNT; i++) {
-  const material = new THREE.MeshStandardMaterial({ color: personalityColor(i), roughness: 0.36, metalness: 0.02 })
-  const mesh = new THREE.Mesh(marbleGeometry, material)
+  const mesh = new THREE.Mesh(marbleGeometry, personalityMaterial(i))
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   entityGroup.add(mesh)
   marbles.push(mesh)
@@ -129,9 +131,7 @@ const satelliteData = [
   { radius: 101, speed: 0.15, phase: 5.45, tiltX: -0.52, tiltZ: -0.76 }
 ]
 for (let i = 0; i < SATELLITE_COUNT; i++) {
-  const sourceIndex = i
-  const material = new THREE.MeshStandardMaterial({ color: personalityColor(sourceIndex), roughness: 0.36, metalness: 0.02 })
-  const mesh = new THREE.Mesh(marbleGeometry, material)
+  const mesh = new THREE.Mesh(marbleGeometry, personalityMaterial(i))
   mesh.scale.setScalar(controls.TAILLE_BILLES)
   satelliteGroup.add(mesh)
   satellites.push(mesh)
@@ -177,7 +177,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — exemple de personnalité : couleur = sous-domaine, intensité = valeur individuelle'
+label.textContent = 'ENTITY — personnalité : teinte pure sur base transparente, opacité = valeur individuelle'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
