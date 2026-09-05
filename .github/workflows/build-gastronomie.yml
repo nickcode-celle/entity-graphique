@@ -18,14 +18,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Blender and NumPy
+      - name: Install Blender headless runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y blender python3-numpy
+          sudo apt-get install -y blender python3-numpy libegl1 libgl1-mesa-dri libglx-mesa0
           blender --version
           blender -b --python-expr "import numpy; print('NumPy', numpy.__version__)"
+          ldconfig -p | grep -E 'libEGL.so.1|libGLX.so.0'
 
       - name: Generate GLB and verification render
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: blender -b --python tools/blender/build_gastronomie.py
 
       - name: Upload verification artifact
