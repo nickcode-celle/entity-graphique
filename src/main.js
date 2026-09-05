@@ -16,7 +16,7 @@ app.appendChild(renderer.domElement)
 const scene = new THREE.Scene()
 scene.background = new THREE.Color(0x16181b)
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 3000)
-camera.position.z = 430
+camera.position.z = 350
 
 const entityGroup = new THREE.Group()
 scene.add(entityGroup)
@@ -53,24 +53,26 @@ const controls = {
   CHEVAUCHEMENT: 1.45,
   ROTATION: 0.11,
   FREQUENCE_INVERSIONS: 12,
-  BRILLANCE: 0.35,
-  INTENSITE_LUMIERE: 2.2,
-  LUMIERE_AMBIANTE: 0.55,
-  CAMERA: 430,
+  BRILLANCE: 0.62,
+  INTENSITE_LUMIERE: 3.65,
+  LUMIERE_AMBIANTE: 1.90,
+  CAMERA: 350,
   VOIR_CELLULES: false
 }
 
+// Exemple volontairement plus contrasté pour vérifier que le profil global
+// de Personnalité devient perceptible dans la palette.
 const personality = [
-  { name: 'Curiosité', color: 0xffe600, level: 31 },
-  { name: 'Humour', color: 0xff6500, level: 24 },
-  { name: 'Franchise', color: 0xe5231f, level: 28 },
-  { name: 'Chaleur', color: 0xa86a12, level: 33 },
-  { name: 'Réserve', color: 0x2468d8, level: 19 },
-  { name: 'Contradiction', color: 0x7137c8, level: 22 },
-  { name: 'Imagination', color: 0x5146e5, level: 30 },
-  { name: 'Spontanéité', color: 0x28c95b, level: 26 },
-  { name: 'Sensibilité', color: 0xe95a9d, level: 29 },
-  { name: 'Esprit critique', color: 0x13bfc8, level: 27 }
+  { name: 'Curiosité', color: 0xffe600, level: 18 },
+  { name: 'Humour', color: 0xff6500, level: 58 },
+  { name: 'Franchise', color: 0xe5231f, level: 76 },
+  { name: 'Chaleur', color: 0xa86a12, level: 27 },
+  { name: 'Réserve', color: 0x2468d8, level: 12 },
+  { name: 'Contradiction', color: 0x7137c8, level: 68 },
+  { name: 'Imagination', color: 0x5146e5, level: 84 },
+  { name: 'Spontanéité', color: 0x28c95b, level: 43 },
+  { name: 'Sensibilité', color: 0xe95a9d, level: 22 },
+  { name: 'Esprit critique', color: 0x13bfc8, level: 63 }
 ]
 
 const assignments = Array.from({ length: BODY_COUNT }, (_, i) => i % personality.length)
@@ -218,7 +220,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — palette personnalité distincte ; jaune / orange / ocre séparés'
+label.textContent = 'ENTITY — test Personnalité : fortes disparités entre sous-domaines'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
