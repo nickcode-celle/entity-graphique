@@ -3,6 +3,7 @@ import GUI from 'lil-gui'
 import './style.css'
 
 const BODY_COUNT = 200
+const SATELLITE_COUNT = 3
 
 const app = document.querySelector('#app')
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -63,11 +64,7 @@ const wanderTargets = []
 const wanderClocks = []
 
 function randomDirection() {
-  return new THREE.Vector3(
-    Math.random() * 2 - 1,
-    Math.random() * 2 - 1,
-    Math.random() * 2 - 1
-  ).normalize()
+  return new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize()
 }
 
 for (let i = 0; i < BODY_COUNT; i++) {
@@ -79,6 +76,23 @@ for (let i = 0; i < BODY_COUNT; i++) {
   travel.push(new THREE.Vector3())
   wanderTargets.push(randomDirection())
   wanderClocks.push(Math.random() * 2.5)
+}
+
+// Trois satellites proches mais clairement détachés du corps.
+// Ils ne sont pas fixés à la surface : chacun suit une orbite lente différente.
+const satelliteGroup = new THREE.Group()
+scene.add(satelliteGroup)
+const satellites = []
+const satelliteData = [
+  { radius: 96, speed: 0.19, phase: 0.4, tiltX: 0.55, tiltZ: 0.18 },
+  { radius: 105, speed: -0.14, phase: 2.55, tiltX: -0.38, tiltZ: 0.72 },
+  { radius: 91, speed: 0.23, phase: 4.65, tiltX: 0.22, tiltZ: -0.61 }
+]
+for (let i = 0; i < SATELLITE_COUNT; i++) {
+  const mesh = new THREE.Mesh(marbleGeometry, marbleMaterial)
+  mesh.scale.setScalar(controls.TAILLE_BILLES)
+  satelliteGroup.add(mesh)
+  satellites.push(mesh)
 }
 
 const cellGroup = new THREE.Group()
@@ -105,6 +119,7 @@ function updateLayout() {
     cell.position.copy(centers[i]).multiplyScalar(spacing)
     cell.scale.setScalar(spacing * controls.LIBERTE * controls.CHEVAUCHEMENT * 2)
   }
+  for (const satellite of satellites) satellite.scale.setScalar(controls.TAILLE_BILLES)
 }
 updateLayout()
 
@@ -119,11 +134,8 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — rotation organique avec inversions sèches rares'
-Object.assign(label.style, {
-  position:'fixed', left:'14px', bottom:'12px',
-  color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none'
-})
+label.textContent = 'ENTITY — 200 billes + 3 satellites — rotation organique'
+Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
 const clock = new THREE.Clock()
@@ -133,15 +145,17 @@ const rotationAxis = randomDirection()
 const rotationAxisTarget = randomDirection()
 const deltaRotation = new THREE.Quaternion()
 let rotationAxisClock = 8 + Math.random() * 8
-
-// Sens de rotation courant. L'inversion, lorsqu'elle arrive, est volontairement instantanée.
 let rotationSense = 1
 let reverseCheckClock = 3 + Math.random() * 5
+let elapsed = 0
+const satelliteEuler = new THREE.Euler()
+const satellitePos = new THREE.Vector3()
 
 function animate() {
   requestAnimationFrame(animate)
 
   const dt = Math.min(clock.getDelta(), 0.04)
+  elapsed += dt
   const spacing = controls.ECART
   const softRadius = spacing * controls.LIBERTE
   const maxRadius = softRadius * controls.CHEVAUCHEMENT
@@ -158,7 +172,6 @@ function animate() {
       const d = travel[i].length()
       const normalized = maxRadius > 0 ? d / maxRadius : 0
       const returnStrength = THREE.MathUtils.smoothstep(normalized, 0.55, 1.0)
-
       inward.copy(travel[i])
       if (inward.lengthSq() > 0.000001) inward.normalize().multiplyScalar(-1)
       else inward.set(0, 0, 0)
@@ -173,7 +186,6 @@ function animate() {
         directions[i].lerp(inward, 0.06).normalize()
       }
     }
-
     marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])
   }
 
@@ -184,11 +196,8 @@ function animate() {
       rotationAxisTarget.copy(randomDirection())
       if (rotationAxisTarget.dot(rotationAxis) < -0.7) rotationAxisTarget.multiplyScalar(-1)
     }
-
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
 
-    // Toutes les 3 à 8 secondes on "teste" une inversion.
-    // Elle reste rare (20 %), mais si elle arrive le changement de sens est immédiat.
     reverseCheckClock -= dt
     if (reverseCheckClock <= 0) {
       reverseCheckClock = 3 + Math.random() * 5
@@ -197,6 +206,16 @@ function animate() {
 
     deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * rotationSense * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
+  }
+
+  // Satellites : proches du corps, espacés et sur trois plans différents.
+  for (let i = 0; i < SATELLITE_COUNT; i++) {
+    const s = satelliteData[i]
+    const a = s.phase + elapsed * s.speed
+    satellitePos.set(Math.cos(a) * s.radius, 0, Math.sin(a) * s.radius)
+    satelliteEuler.set(s.tiltX, 0, s.tiltZ)
+    satellitePos.applyEuler(satelliteEuler)
+    satellites[i].position.copy(satellitePos)
   }
 
   renderer.render(scene, camera)
