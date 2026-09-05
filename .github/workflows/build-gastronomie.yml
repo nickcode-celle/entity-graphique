@@ -1,0 +1,48 @@
+name: Build Gastronomie master model
+
+on:
+  push:
+    paths:
+      - 'tools/blender/build_gastronomie.py'
+      - '.github/workflows/build-gastronomie.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y blender
+          blender --version
+
+      - name: Generate GLB and verification render
+        run: blender -b --python tools/blender/build_gastronomie.py
+
+      - name: Upload verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gastronomie-master-preview
+          path: |
+            artifacts/gastronomie_preview.png
+            public/models/gastronomie.glb
+
+      - name: Commit generated master model
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/models/gastronomie.glb
+          if git diff --cached --quiet; then
+            echo 'No GLB change to commit'
+          else
+            git commit -m 'Generate Gastronomie master GLB'
+            git push
+          fi
