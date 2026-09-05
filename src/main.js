@@ -50,6 +50,7 @@ const controls = {
   LIBERTE: 0.15,
   CHEVAUCHEMENT: 1.45,
   ROTATION: 0.60,
+  FREQUENCE_INVERSIONS: 2.2,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -78,8 +79,6 @@ for (let i = 0; i < BODY_COUNT; i++) {
   wanderClocks.push(Math.random() * 2.5)
 }
 
-// Trois satellites proches mais clairement détachés du corps.
-// Ils ne sont pas fixés à la surface : chacun suit une orbite lente différente.
 const satelliteGroup = new THREE.Group()
 scene.add(satelliteGroup)
 const satellites = []
@@ -123,8 +122,9 @@ function updateLayout() {
 }
 updateLayout()
 
-const gui = new GUI({ title: 'ENTITY — BASE 200 — V2 ACTIVE' })
+const gui = new GUI({ title: 'ENTITY — BASE 200 — REGLAGES' })
 gui.add(controls, 'ROTATION', 0, 2.0, 0.01).name('V2 — VITESSE ROTATION')
+gui.add(controls, 'FREQUENCE_INVERSIONS', 0, 12, 0.1).name('FREQUENCE INVERSIONS / MIN')
 gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
@@ -134,7 +134,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes + 3 satellites — rotation organique'
+label.textContent = 'ENTITY — 200 billes + 3 satellites — fréquence d’inversion réglable'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
@@ -146,7 +146,6 @@ const rotationAxisTarget = randomDirection()
 const deltaRotation = new THREE.Quaternion()
 let rotationAxisClock = 8 + Math.random() * 8
 let rotationSense = 1
-let reverseCheckClock = 3 + Math.random() * 5
 let elapsed = 0
 const satelliteEuler = new THREE.Euler()
 const satellitePos = new THREE.Vector3()
@@ -198,17 +197,16 @@ function animate() {
     }
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
 
-    reverseCheckClock -= dt
-    if (reverseCheckClock <= 0) {
-      reverseCheckClock = 3 + Math.random() * 5
-      if (Math.random() < 0.20) rotationSense *= -1
-    }
+    // Fréquence exprimée directement en inversions moyennes par minute.
+    // Les instants restent aléatoires ; lorsqu'une inversion arrive, elle est immédiate.
+    const inversionsPerSecond = controls.FREQUENCE_INVERSIONS / 60
+    const reverseProbabilityThisFrame = 1 - Math.exp(-inversionsPerSecond * dt)
+    if (Math.random() < reverseProbabilityThisFrame) rotationSense *= -1
 
     deltaRotation.setFromAxisAngle(rotationAxis, controls.ROTATION * rotationSense * dt)
     entityGroup.quaternion.premultiply(deltaRotation).normalize()
   }
 
-  // Satellites : proches du corps, espacés et sur trois plans différents.
   for (let i = 0; i < SATELLITE_COUNT; i++) {
     const s = satelliteData[i]
     const a = s.phase + elapsed * s.speed
