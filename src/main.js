@@ -3,7 +3,7 @@ import GUI from 'lil-gui'
 import './style.css'
 
 const BODY_COUNT = 200
-const SATELLITE_COUNT = 3
+const SATELLITE_COUNT = 5
 
 const app = document.querySelector('#app')
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -83,9 +83,11 @@ const satelliteGroup = new THREE.Group()
 scene.add(satelliteGroup)
 const satellites = []
 const satelliteData = [
-  { radius: 96, speed: 0.19, phase: 0.4, tiltX: 0.55, tiltZ: 0.18 },
-  { radius: 105, speed: -0.14, phase: 2.55, tiltX: -0.38, tiltZ: 0.72 },
-  { radius: 91, speed: 0.23, phase: 4.65, tiltX: 0.22, tiltZ: -0.61 }
+  { radius: 103, speed: 0.19, phase: 0.40, tiltX: 0.55, tiltZ: 0.18 },
+  { radius: 112, speed: -0.14, phase: 1.70, tiltX: -0.38, tiltZ: 0.72 },
+  { radius: 98, speed: 0.23, phase: 2.95, tiltX: 0.22, tiltZ: -0.61 },
+  { radius: 108, speed: -0.17, phase: 4.15, tiltX: 0.68, tiltZ: -0.27 },
+  { radius: 101, speed: 0.15, phase: 5.45, tiltX: -0.52, tiltZ: -0.76 }
 ]
 for (let i = 0; i < SATELLITE_COUNT; i++) {
   const mesh = new THREE.Mesh(marbleGeometry, marbleMaterial)
@@ -134,7 +136,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.po
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes + 3 satellites — fréquence d’inversion réglable'
+label.textContent = 'ENTITY — 200 billes + 5 satellites — fréquence d’inversion réglable'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
@@ -197,8 +199,6 @@ function animate() {
     }
     rotationAxis.lerp(rotationAxisTarget, 1 - Math.exp(-dt * 0.22)).normalize()
 
-    // Fréquence exprimée directement en inversions moyennes par minute.
-    // Les instants restent aléatoires ; lorsqu'une inversion arrive, elle est immédiate.
     const inversionsPerSecond = controls.FREQUENCE_INVERSIONS / 60
     const reverseProbabilityThisFrame = 1 - Math.exp(-inversionsPerSecond * dt)
     if (Math.random() < reverseProbabilityThisFrame) rotationSense *= -1
