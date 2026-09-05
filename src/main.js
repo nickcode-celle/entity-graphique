@@ -40,10 +40,11 @@ function makeBodyCenters() {
 }
 
 const controls = {
-  ECART: 19,
+  ECART: 28,
   TAILLE_BILLES: 0.68,
-  V1: 0.20,
-  LIBERTE: 0.30,
+  V1: 0.50,
+  LIBERTE: 0.15,
+  CHEVAUCHEMENT: 1.45,
   CAMERA: 430,
   VOIR_CELLULES: false
 }
@@ -54,7 +55,8 @@ const marbleMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f3f3, roughne
 const marbles = []
 const directions = []
 const travel = []
-const randomSteer = []
+const wanderTargets = []
+const wanderClocks = []
 
 function randomDirection() {
   return new THREE.Vector3(
@@ -71,8 +73,9 @@ for (let i = 0; i < BODY_COUNT; i++) {
   marbles.push(mesh)
 
   directions.push(randomDirection())
-  randomSteer.push(randomDirection())
   travel.push(new THREE.Vector3())
+  wanderTargets.push(randomDirection())
+  wanderClocks.push(Math.random() * 2.5)
 }
 
 const cellGroup = new THREE.Group()
@@ -97,7 +100,7 @@ function updateLayout() {
     marbles[i].position.copy(centers[i]).multiplyScalar(spacing).add(travel[i])
     const cell = cellGroup.children[i]
     cell.position.copy(centers[i]).multiplyScalar(spacing)
-    cell.scale.setScalar(spacing * controls.LIBERTE * 2)
+    cell.scale.setScalar(spacing * controls.LIBERTE * controls.CHEVAUCHEMENT * 2)
   }
 }
 updateLayout()
@@ -107,11 +110,12 @@ gui.add(controls, 'ECART', 13, 28, 0.25).name('TAILLE / ECART').onChange(updateL
 gui.add(controls, 'TAILLE_BILLES', 0.4, 1.8, 0.02).name('TAILLE BILLES').onChange(updateLayout)
 gui.add(controls, 'V1', 0, 3, 0.05).name('V1 — VIE INTERNE')
 gui.add(controls, 'LIBERTE', 0.05, 0.45, 0.01).name('LIBERTE CELLULE').onChange(updateLayout)
+gui.add(controls, 'CHEVAUCHEMENT', 1.0, 1.8, 0.05).name('CHEVAUCHEMENT').onChange(updateLayout)
 gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(v => camera.position.z = v)
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — 200 billes — trajectoires courbes / vitesse commune'
+label.textContent = 'ENTITY — 200 billes — dérive continue / cellules souples'
 Object.assign(label.style, {
   position:'fixed', left:'14px', bottom:'12px',
   color:'rgba(255,255,255,.55)', font:'12px Arial', pointerEvents:'none'
@@ -121,43 +125,45 @@ document.body.appendChild(label)
 const clock = new THREE.Clock()
 const inward = new THREE.Vector3()
 const steer = new THREE.Vector3()
-let steerTimer = 0
 
 function animate() {
   requestAnimationFrame(animate)
 
   const dt = Math.min(clock.getDelta(), 0.04)
   const spacing = controls.ECART
-  const radius = spacing * controls.LIBERTE
+  const softRadius = spacing * controls.LIBERTE
+  const maxRadius = softRadius * controls.CHEVAUCHEMENT
   const speed = controls.V1 * spacing * 0.42
-
-  steerTimer += dt
-  if (steerTimer > 0.75) {
-    steerTimer = 0
-    for (let i = 0; i < BODY_COUNT; i++) {
-      randomSteer[i].lerp(randomDirection(), 0.45).normalize()
-    }
-  }
 
   for (let i = 0; i < BODY_COUNT; i++) {
     if (speed > 0) {
+      wanderClocks[i] -= dt
+      if (wanderClocks[i] <= 0) {
+        wanderClocks[i] = 0.8 + Math.random() * 2.4
+        wanderTargets[i].lerp(randomDirection(), 0.65).normalize()
+      }
+
       const d = travel[i].length()
-      const edge = THREE.MathUtils.smoothstep(d / radius, 0.55, 1.0)
+      const normalized = maxRadius > 0 ? d / maxRadius : 0
+      const returnStrength = THREE.MathUtils.smoothstep(normalized, 0.55, 1.0)
 
       inward.copy(travel[i])
       if (inward.lengthSq() > 0.000001) inward.normalize().multiplyScalar(-1)
+      else inward.set(0, 0, 0)
 
-      // Courbure continue : légère dérive aléatoire + rappel progressif vers le centre.
-      steer.copy(randomSteer[i]).multiplyScalar(0.22)
-      steer.addScaledVector(inward, edge * 1.35)
+      // Dérive aléatoire continue : chaque bille change lentement de cap,
+      // sans boucle fixe et sans angle brusque.
+      steer.copy(wanderTargets[i]).multiplyScalar(0.30)
+      steer.addScaledVector(inward, returnStrength * 1.55)
 
       directions[i].addScaledVector(steer, dt).normalize()
       travel[i].addScaledVector(directions[i], speed * dt)
 
-      // Filet de sécurité invisible : aucune cassure de trajectoire.
-      if (travel[i].length() > radius) {
-        travel[i].setLength(radius)
-        directions[i].lerp(inward, 0.08).normalize()
+      // Zone souple : on autorise l'entrée dans le territoire voisin.
+      // Au-delà, rappel progressif sans rebond visible.
+      if (travel[i].length() > maxRadius) {
+        travel[i].setLength(maxRadius)
+        directions[i].lerp(inward, 0.06).normalize()
       }
     }
 
