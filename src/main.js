@@ -60,8 +60,6 @@ const controls = {
   VOIR_CELLULES: false
 }
 
-// Exemple volontairement plus contrasté pour vérifier que le profil global
-// de Personnalité devient perceptible dans la palette.
 const personality = [
   { name: 'Curiosité', color: 0xffe600, level: 18 },
   { name: 'Humour', color: 0xff6500, level: 58 },
@@ -81,12 +79,28 @@ for (let i = assignments.length - 1; i > 0; i--) {
   ;[assignments[i], assignments[j]] = [assignments[j], assignments[i]]
 }
 
+// Règle ENTITY : les billes d'un même sous-domaine peuvent être très différentes,
+// mais leur moyenne doit rester exactement égale au niveau global du sous-domaine.
+// On construit des paires symétriques autour de la moyenne : par exemple 40/60 pour 50%.
 const individualLevels = new Array(BODY_COUNT)
 for (let p = 0; p < personality.length; p++) {
   const ids = assignments.map((a, i) => a === p ? i : -1).filter(i => i >= 0)
-  const deviations = ids.map(() => Math.random() * 10 - 5)
-  const meanDeviation = deviations.reduce((a, b) => a + b, 0) / deviations.length
-  ids.forEach((id, k) => individualLevels[id] = THREE.MathUtils.clamp(personality[p].level + deviations[k] - meanDeviation, 0, 100))
+  const target = personality[p].level
+  const maxSymmetricSpread = Math.min(20, target, 100 - target)
+  const values = []
+
+  for (let k = 0; k + 1 < ids.length; k += 2) {
+    const spread = maxSymmetricSpread * (0.25 + Math.random() * 0.75)
+    values.push(target - spread, target + spread)
+  }
+  if (ids.length % 2 === 1) values.push(target)
+
+  // Mélange pour que les valeurs basses/hautes soient réparties aléatoirement dans le corps.
+  for (let k = values.length - 1; k > 0; k--) {
+    const j = Math.floor(Math.random() * (k + 1))
+    ;[values[k], values[j]] = [values[j], values[k]]
+  }
+  ids.forEach((id, k) => individualLevels[id] = values[k])
 }
 
 function personalityColor(index) {
@@ -151,7 +165,7 @@ const satelliteData = [
   { radius: 103, speed: 0.19, phase: 0.40, tiltX: 0.55, tiltZ: 0.18 },
   { radius: 112, speed: -0.14, phase: 1.70, tiltX: -0.38, tiltZ: 0.72 },
   { radius: 98, speed: 0.23, phase: 2.95, tiltX: 0.22, tiltZ: -0.61 },
-  { radius: 108, speed: -0.17, phase: 4.15, tiltX: 0.68, tiltZ: -0.27 },
+  { radius: 108, speed: -0.17, phase: 4.15, tiltX: 0.68, phaseOffset: 0.0, tiltZ: -0.27 },
   { radius: 101, speed: 0.15, phase: 5.45, tiltX: -0.52, tiltZ: -0.76 }
 ]
 for (let i = 0; i < SATELLITE_COUNT; i++) {
@@ -220,7 +234,7 @@ gui.add(controls, 'CAMERA', 250, 800, 10).name('CAMERA').onChange(updateCameraAn
 gui.add(controls, 'VOIR_CELLULES').name('VOIR CELLULES').onChange(v => cellGroup.visible = v)
 
 const label = document.createElement('div')
-label.textContent = 'ENTITY — test Personnalité : fortes disparités entre sous-domaines'
+label.textContent = 'ENTITY — Personnalité : moyenne globale exacte + fortes disparités individuelles'
 Object.assign(label.style, { position:'fixed', left:'14px', bottom:'12px', color:'rgba(255,255,255,.65)', font:'12px Arial', pointerEvents:'none' })
 document.body.appendChild(label)
 
