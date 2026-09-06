@@ -37,17 +37,20 @@ function reposStep(dt,strength=1){center.set(0,0,0);for(const s of state)center.
 let startTime=performance.now()/1000
 const clock=new THREE.Clock()
 function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime;if(t<NORMAL_HOLD)return
-  if(controls){controls.ECART=28;controls.V1=.75}
-  if(t<DONUT_START){const k=smooth((t-REPOS_START)/TO_REPOS);reposStep(dt,k);for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}return}
-  // Passage REPOS -> DONUT : équivalent visuel du saut historique ALIGNEMENT 1 -> 8,
-  // matérialisé ici par l'organisation collective progressive en tore.
+  if(controls)controls.V1=.75
+  if(t<DONUT_START){if(controls)controls.ECART=28;const k=smooth((t-REPOS_START)/TO_REPOS);reposStep(dt,k);for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}return}
+
+  // REPOS -> DONUT : pendant que l'alignement organise le tore, on écarte aussi la matière.
+  // ECART passe réellement de 28 à 40 pour éviter que les billes se collent pendant la formation.
   const d=smooth((t-DONUT_START)/DONUT_TIME)
+  const spread=THREE.MathUtils.lerp(1,40/28,d)
+  if(controls)controls.ECART=THREE.MathUtils.lerp(28,40,d)
   reposStep(dt,1-d)
-  for(const s of state){s.pos.lerp(s.donut,.035+.075*d);s.o.position.copy(s.pos)}
-  if(d>=1){for(const s of state)s.o.position.copy(s.donut)}
+  for(const s of state){tmp.copy(s.donut).multiplyScalar(spread);s.pos.lerp(tmp,.035+.075*d);s.o.position.copy(s.pos)}
+  if(d>=1){for(const s of state)s.o.position.copy(s.donut).multiplyScalar(40/28)}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY → REPOS rapide → DONUT · 500 billes · V1 base 0,75'
+if(label)label.textContent='ENTITY → REPOS rapide → DONUT · 500 billes · ECART 28→40 · V1 0,75'
 const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS → DONUT'
