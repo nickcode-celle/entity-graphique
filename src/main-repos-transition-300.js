@@ -40,22 +40,22 @@ function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDel
     const k=smooth((t-REPOS_START)/TO_REPOS);reposStep(dt,k);for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}return
   }
 
-  // Dès le départ REPOS -> DONUT, les dynamiques propres à Entity s'effacent :
-  // V1 0,75 -> 0 et rotation globale 0,11 -> 0. Le mouvement DONUT prend seul la main.
+  // REPOS -> DONUT : on conserve le mouvement propre des billes à V1 = 0,75.
+  // Seule la rotation globale de l'Entity est arrêtée progressivement.
   const d=smooth((t-DONUT_START)/DONUT_TIME)
   const neutral=smooth(Math.min(1,(t-DONUT_START)/1.15))
   const spread=THREE.MathUtils.lerp(1,40/28,d)
   if(controls){
     controls.ECART=THREE.MathUtils.lerp(28,40,d)
-    controls.V1=THREE.MathUtils.lerp(.75,0,neutral)
+    controls.V1=.75
     controls.ROTATION=THREE.MathUtils.lerp(.11,0,neutral)
   }
   reposStep(dt,1-d)
   for(const s of state){tmp.copy(s.donut).multiplyScalar(spread);s.pos.lerp(tmp,.035+.075*d);s.o.position.copy(s.pos)}
-  if(d>=1){if(controls){controls.V1=0;controls.ROTATION=0;controls.ECART=40}for(const s of state)s.o.position.copy(s.donut).multiplyScalar(40/28)}
+  if(d>=1){if(controls){controls.V1=.75;controls.ROTATION=0;controls.ECART=40}}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY → REPOS rapide → DONUT · V1 et rotation neutralisés · ECART 28→40'
+if(label)label.textContent='ENTITY → REPOS rapide → DONUT · mouvement billes conservé V1 0,75 · rotation Entity arrêtée'
 const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS → DONUT'
