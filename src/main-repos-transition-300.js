@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST REPOS : Entity éligible -> contraction/noyau -> respirations réelles ECART 28/40 -> REPOS.
+// TEST REPOS : Entity éligible -> contraction/noyau -> REPOS complet -> respirations réelles ECART 28/40.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -33,10 +33,16 @@ const sourcePool=bodies.slice()
 for(let i=0;i<100;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__repos300=true;c.position.copy(shellPoint(i));entityGroup.add(c);bodies.push(c)}
 
 const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28};void domains
-
 const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2}))
-const NORMAL_HOLD=5,RELEASE=2.7,BREATH_START=NORMAL_HOLD+RELEASE,BREATH_CYCLES=4
-const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,BREATH_PERIOD=OPEN_TIME+WIDE_HOLD+CLOSE_TIME
+
+const NORMAL_HOLD=5
+const RELEASE=2.7
+const REPOS_SETTLE=4.0
+const REPOS_HOLD_BEFORE_FIRST=3.0
+const BREATH_CYCLES=4
+const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,REPOS_HOLD=3
+const BREATH_PERIOD=OPEN_TIME+WIDE_HOLD+CLOSE_TIME+REPOS_HOLD
+const BREATH_START=NORMAL_HOLD+RELEASE+REPOS_SETTLE+REPOS_HOLD_BEFORE_FIRST
 const SPEED=.35,COHESION=60,ALIGNMENT=1,SEPARATION=30,CENTER=4.9,BOUNDS=.51,NEIGHBOR_R=34,SEP_R=15
 let startTime=performance.now()/1000,captured=false
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
@@ -56,7 +62,8 @@ function reposStep(dt,blend){
   for(const s of state)s.pos.addScaledVector(s.vel,dt)
 }
 
-// Un cycle : ouverture 28 -> 40, pause exacte 3 s à 40, fermeture 40 -> 28.
+// Chaque cycle part de REPOS (ECART 28), s'ouvre, reste 3 s à 40,
+// revient complètement à REPOS puis y reste 3 s avant le cycle suivant.
 function breathingEcart(t){
   if(t<BREATH_START)return 28
   const elapsed=t-BREATH_START,total=BREATH_CYCLES*BREATH_PERIOD
@@ -64,7 +71,8 @@ function breathingEcart(t){
   const local=elapsed%BREATH_PERIOD
   if(local<OPEN_TIME)return THREE.MathUtils.lerp(28,40,smooth(local/OPEN_TIME))
   if(local<OPEN_TIME+WIDE_HOLD)return 40
-  return THREE.MathUtils.lerp(40,28,smooth((local-OPEN_TIME-WIDE_HOLD)/CLOSE_TIME))
+  if(local<OPEN_TIME+WIDE_HOLD+CLOSE_TIME)return THREE.MathUtils.lerp(40,28,smooth((local-OPEN_TIME-WIDE_HOLD)/CLOSE_TIME))
+  return 28
 }
 
 const clock=new THREE.Clock()
@@ -74,9 +82,17 @@ function animate(){
   if(t<NORMAL_HOLD)return
   if(!captured){captured=true;capture()}
 
+  // 1. Passage réel vers REPOS : la simulation collective continue seule jusqu'à stabilisation.
+  if(t<BREATH_START){
+    if(controls)controls.ECART=28
+    const k=smooth((t-NORMAL_HOLD)/RELEASE)
+    reposStep(dt,k)
+    for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
+    return
+  }
+
   const breathEnd=BREATH_START+BREATH_CYCLES*BREATH_PERIOD
-  const inBreath=t>=BREATH_START&&t<breathEnd
-  if(inBreath){
+  if(t<breathEnd){
     if(controls)controls.ECART=breathingEcart(t)
     for(let i=0;i<200;i++){const s=state[i];s.pos.copy(s.o.position);if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)}
     const targetScale=(controls?.ECART||28)/28
@@ -88,12 +104,12 @@ function animate(){
     return
   }
 
-  if(t>=breathEnd&&controls)controls.ECART=28
-  const k=smooth((t-NORMAL_HOLD)/RELEASE);reposStep(dt,k)
-  for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
+  if(controls)controls.ECART=28
+  reposStep(dt,1)
+  for(const s of state)s.o.position.copy(s.pos)
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY — REPOS · 300 billes · 4 respirations ECART 28 ↔ 40 · pause 3 s à 40'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / PAUSE LARGE 3 S'
+if(label)label.textContent='ENTITY — REPOS · passage complet puis 4 respirations · pauses 3 s large / 3 s REPOS'
+const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / SÉQUENCE COMPLÈTE'
