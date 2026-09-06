@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST REPOS : Entity éligible -> contraction/noyau -> REPOS -> respirations -> REPOS -> retour Entity.
+// TEST REPOS : Entity -> REPOS 8 s -> écarté 3 s -> REPOS 8 s -> écarté 3 s -> REPOS 10 s -> Entity.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -35,16 +35,19 @@ for(let i=0;i<100;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sou
 const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28};void domains
 const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2,returnFrom:new THREE.Vector3()}))
 
-const NORMAL_HOLD=5
-const RELEASE=2.7
-const REPOS_SETTLE=4.0
-const REPOS_HOLD_BEFORE_FIRST=6.0
-const BREATH_CYCLES=4
-const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,REPOS_HOLD=6
-const BREATH_PERIOD=OPEN_TIME+WIDE_HOLD+CLOSE_TIME+REPOS_HOLD
-const BREATH_START=NORMAL_HOLD+RELEASE+REPOS_SETTLE+REPOS_HOLD_BEFORE_FIRST
-const FINAL_REPOS_HOLD=6
-const RETURN_TIME=3.0
+const NORMAL_HOLD=5,RELEASE=2.7,REPOS_SETTLE=4
+const FIRST_REPOS_HOLD=8,MIDDLE_REPOS_HOLD=8,FINAL_REPOS_HOLD=10
+const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,RETURN_TIME=3
+const REPOS_READY=NORMAL_HOLD+RELEASE+REPOS_SETTLE
+const OPEN1_START=REPOS_READY+FIRST_REPOS_HOLD
+const WIDE1_START=OPEN1_START+OPEN_TIME
+const CLOSE1_START=WIDE1_START+WIDE_HOLD
+const MIDDLE_REPOS_START=CLOSE1_START+CLOSE_TIME
+const OPEN2_START=MIDDLE_REPOS_START+MIDDLE_REPOS_HOLD
+const WIDE2_START=OPEN2_START+OPEN_TIME
+const CLOSE2_START=WIDE2_START+WIDE_HOLD
+const FINAL_REPOS_START=CLOSE2_START+CLOSE_TIME
+const RETURN_START=FINAL_REPOS_START+FINAL_REPOS_HOLD
 const SPEED=.35,COHESION=60,ALIGNMENT=1,SEPARATION=30,CENTER=4.9,BOUNDS=.51,NEIGHBOR_R=34,SEP_R=15
 let startTime=performance.now()/1000,captured=false,returnCaptured=false
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
@@ -64,15 +67,27 @@ function reposStep(dt,blend){
   for(const s of state)s.pos.addScaledVector(s.vel,dt)
 }
 
-function breathingEcart(t){
-  if(t<BREATH_START)return 28
-  const elapsed=t-BREATH_START,total=BREATH_CYCLES*BREATH_PERIOD
-  if(elapsed>=total)return 28
-  const local=elapsed%BREATH_PERIOD
-  if(local<OPEN_TIME)return THREE.MathUtils.lerp(28,40,smooth(local/OPEN_TIME))
-  if(local<OPEN_TIME+WIDE_HOLD)return 40
-  if(local<OPEN_TIME+WIDE_HOLD+CLOSE_TIME)return THREE.MathUtils.lerp(40,28,smooth((local-OPEN_TIME-WIDE_HOLD)/CLOSE_TIME))
+// Séquence vérifiée : REPOS 8 s -> large 3 s -> REPOS 8 s -> large 3 s -> REPOS 10 s.
+function sequenceEcart(t){
+  if(t<OPEN1_START)return 28
+  if(t<WIDE1_START)return THREE.MathUtils.lerp(28,40,smooth((t-OPEN1_START)/OPEN_TIME))
+  if(t<CLOSE1_START)return 40
+  if(t<MIDDLE_REPOS_START)return THREE.MathUtils.lerp(40,28,smooth((t-CLOSE1_START)/CLOSE_TIME))
+  if(t<OPEN2_START)return 28
+  if(t<WIDE2_START)return THREE.MathUtils.lerp(28,40,smooth((t-OPEN2_START)/OPEN_TIME))
+  if(t<CLOSE2_START)return 40
+  if(t<FINAL_REPOS_START)return THREE.MathUtils.lerp(40,28,smooth((t-CLOSE2_START)/CLOSE_TIME))
   return 28
+}
+
+function driveEcart(dt,t){
+  if(controls)controls.ECART=sequenceEcart(t)
+  for(let i=0;i<200;i++){const s=state[i];s.pos.copy(s.o.position);if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)}
+  const targetScale=(controls?.ECART||28)/28
+  for(let i=200;i<300;i++){
+    const s=state[i],baseDir=s.start.clone().normalize(),target=baseDir.multiplyScalar(s.start.length()*targetScale),accel=target.sub(s.pos).multiplyScalar(2.1)
+    s.vel.addScaledVector(accel,dt);s.vel.multiplyScalar(Math.pow(.90,dt*60));s.pos.addScaledVector(s.vel,dt);s.o.position.copy(s.pos)
+  }
 }
 
 const clock=new THREE.Clock()
@@ -82,41 +97,34 @@ function animate(){
   if(t<NORMAL_HOLD)return
   if(!captured){captured=true;capture()}
 
-  if(t<BREATH_START){
+  // Entity -> REPOS, puis maintien REPOS 8 secondes avant le premier écartement.
+  if(t<OPEN1_START){
     if(controls)controls.ECART=28
     const k=smooth((t-NORMAL_HOLD)/RELEASE);reposStep(dt,k)
     for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
     return
   }
 
-  const breathEnd=BREATH_START+BREATH_CYCLES*BREATH_PERIOD
-  if(t<breathEnd){
-    if(controls)controls.ECART=breathingEcart(t)
-    for(let i=0;i<200;i++){const s=state[i];s.pos.copy(s.o.position);if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)}
-    const targetScale=(controls?.ECART||28)/28
-    for(let i=200;i<300;i++){
-      const s=state[i],baseDir=s.start.clone().normalize(),target=baseDir.multiplyScalar(s.start.length()*targetScale),accel=target.sub(s.pos).multiplyScalar(2.1)
-      s.vel.addScaledVector(accel,dt);s.vel.multiplyScalar(Math.pow(.90,dt*60));s.pos.addScaledVector(s.vel,dt);s.o.position.copy(s.pos)
-    }
-    return
-  }
+  // Deux écartements seulement, avec 8 secondes complètes sur le REPOS intermédiaire.
+  if(t<FINAL_REPOS_START){driveEcart(dt,t);return}
 
-  if(controls)controls.ECART=28
-  const finalHoldEnd=breathEnd+FINAL_REPOS_HOLD
-  if(t<finalHoldEnd){
+  // Dernier REPOS : 10 secondes complètes avant le retour à Entity.
+  if(t<RETURN_START){
+    if(controls)controls.ECART=28
     reposStep(dt,1)
     for(const s of state)s.o.position.copy(s.pos)
     return
   }
 
-  // Après 6 s sur le dernier REPOS, retour progressif à la forme d'Entity de départ.
+  // Retour progressif vers la forme Entity de départ.
+  if(controls)controls.ECART=28
   if(!returnCaptured){returnCaptured=true;for(const s of state)s.returnFrom.copy(s.o.position)}
-  const r=smooth((t-finalHoldEnd)/RETURN_TIME)
+  const r=smooth((t-RETURN_START)/RETURN_TIME)
   for(const s of state)s.o.position.copy(s.returnFrom).lerp(s.start,r)
   if(r>=1){for(const s of state){s.pos.copy(s.start);s.vel.set(0,0,0)}}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY — REPOS · pauses 6 s · dernier REPOS 6 s · retour Entity'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / RETOUR COMPLET'
+if(label)label.textContent='ENTITY → REPOS 8 s → ÉCARTÉ 3 s → REPOS 8 s → ÉCARTÉ 3 s → REPOS 10 s → ENTITY'
+const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / SÉQUENCE 8-3-8-3-10'
