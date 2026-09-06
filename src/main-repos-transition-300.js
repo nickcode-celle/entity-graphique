@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST : ENTITY -> REPOS rapide -> DONUT. 500 billes, même matière, sans remplacement visuel.
+// TEST : ENTITY -> REPOS murmuration -> DONUT murmuration.
+// Le DONUT n'est jamais une cible géométrique : il reste une nuée vivante.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -12,50 +13,163 @@ THREE.Object3D.prototype.add=function(...objects){const result=originalAdd.apply
 await import('./main-first-connection-panel.js')
 THREE.Object3D.prototype.add=originalAdd;GUI.prototype.add=originalGuiAdd
 
-// Référence Entity de base : V1 = 0,75.
 if(controls)Object.assign(controls,{ECART:28,TAILLE_BILLES:.90,V1:.75,RELATION_GLOBALE:43,LIBERTE:.15,CHEVAUCHEMENT:1.45,ROTATION:.11,FREQUENCE_INVERSIONS:12,BRILLANCE:.62,INTENSITE_LUMIERE:2.25,LUMIERE_AMBIANTE:1,CAMERA:280})
 
 const rnd=(a,b)=>THREE.MathUtils.lerp(a,b,Math.random())
 const randomUnit=()=>new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize()
 function cloneMaterial(m){const c=m.clone();if(c.isMeshStandardMaterial){c.emissive.set(0);c.emissiveIntensity=0}return c}
 function cloneBody(src){const c=src.clone(true);c.traverse(n=>{if(n.material)n.material=Array.isArray(n.material)?n.material.map(cloneMaterial):cloneMaterial(n.material);if(n.isMesh){n.castShadow=true;n.receiveShadow=true}});return c}
+
 const sourcePool=bodies.slice()
-for(let i=0;i<300;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__donut500=true;const u=randomUnit();c.position.copy(u.multiplyScalar(rnd(72,98)));entityGroup.add(c);bodies.push(c)}
+for(let i=0;i<300;i++){
+  const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)])
+  c.userData.__donut500=true
+  c.position.copy(randomUnit().multiplyScalar(rnd(72,98)))
+  entityGroup.add(c);bodies.push(c)
+}
 
-const state=bodies.map((o,i)=>({o,i,start:o.position.clone(),pos:o.position.clone(),vel:randomUnit().multiplyScalar(rnd(1.8,2.8)),phase:Math.random()*Math.PI*2,donut:new THREE.Vector3()}))
-const tilt=new THREE.Euler(.48,.10,-.22)
-for(const s of state){const a=(s.i/state.length)*Math.PI*2+Math.sin(s.i*2.17)*.045;const b=((s.i*137)%state.length)/state.length*Math.PI*2;const R=64,r=22;const p=new THREE.Vector3((R+r*Math.cos(b))*Math.cos(a),r*Math.sin(b),(R+r*Math.cos(b))*Math.sin(a));p.applyEuler(tilt);s.donut.copy(p)}
+const N=bodies.length
+const state=bodies.map((o,i)=>{
+  const h=randomUnit();h.z*=.32;h.normalize()
+  return {o,i,start:o.position.clone(),pos:o.position.clone(),heading:h,desired:h.clone(),speed:rnd(17,23),phase:Math.random()*Math.PI*2}
+})
 
-const NORMAL_HOLD=4,TO_REPOS=2.2,REPOS_HOLD=2,DONUT_TIME=5
-const REPOS_START=NORMAL_HOLD,REPOS_READY=REPOS_START+TO_REPOS,DONUT_START=REPOS_READY+REPOS_HOLD
-const center=new THREE.Vector3(),tmp=new THREE.Vector3()
+// Paramètres de la murmuration. REPOS = alignement 1 ; DONUT = saut direct à 8.
+const flock={
+  alignment:1,
+  cohesion:60,
+  separation:30,
+  centre:4.9,
+  neighbourRadius:34,
+  dangerDistance:7.8,
+  speed:20,
+  depth:34
+}
+
+const NORMAL_HOLD=4
+const TO_MURMURATION=2.25
+const REPOS_HOLD=4
+const REPOS_START=NORMAL_HOLD
+const REPOS_READY=REPOS_START+TO_MURMURATION
+const DONUT_START=REPOS_READY+REPOS_HOLD
+
+const centroid=new THREE.Vector3(),meanHeading=new THREE.Vector3()
+const tmp=new THREE.Vector3(),tmp2=new THREE.Vector3(),align=new THREE.Vector3(),localCenter=new THREE.Vector3(),sep=new THREE.Vector3()
+let frame=0
+
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
-function reposStep(dt,strength=1){center.set(0,0,0);for(const s of state)center.add(s.pos);center.multiplyScalar(1/state.length);for(const s of state){tmp.copy(center).sub(s.pos);s.vel.addScaledVector(tmp,.018*dt*strength);const radial=s.pos.clone().sub(center);if(radial.length()>62)s.vel.addScaledVector(radial.normalize(),-.7*dt*strength);s.phase+=dt*.7;s.vel.x+=Math.sin(s.phase+s.i*.17)*.05*dt;s.vel.y+=Math.cos(s.phase*.8+s.i*.11)*.04*dt;s.vel.z+=Math.sin(s.phase*.9+s.i*.13)*.05*dt;const speed=s.vel.length();if(speed>3.1)s.vel.multiplyScalar(3.1/speed);s.pos.addScaledVector(s.vel,dt)}}
 
-let startTime=performance.now()/1000
+function globalState(){
+  centroid.set(0,0,0);meanHeading.set(0,0,0)
+  for(const s of state){centroid.add(s.pos);meanHeading.add(s.heading)}
+  centroid.multiplyScalar(1/N)
+  if(meanHeading.lengthSq()>1e-6)meanHeading.normalize()
+}
+
+function decide(s,donut){
+  align.set(0,0,0);localCenter.set(0,0,0);sep.set(0,0,0)
+  let count=0
+  // Échantillonnage topologique régulier : assez de voisins pour 500 billes sans figer la simulation.
+  const stride=17
+  for(let k=1;k<=42;k++){
+    const other=state[(s.i+k*stride)%N]
+    tmp.copy(other.pos).sub(s.pos)
+    const d2=tmp.lengthSq()
+    if(d2<flock.neighbourRadius*flock.neighbourRadius){
+      const d=Math.sqrt(d2)
+      align.add(other.heading);localCenter.add(other.pos);count++
+      if(d>1e-4&&d<flock.dangerDistance){
+        sep.addScaledVector(tmp,-(1-d/flock.dangerDistance)/d)
+      }
+    }
+  }
+
+  const desired=s.heading.clone()
+  if(count){
+    align.multiplyScalar(1/count).normalize()
+    localCenter.multiplyScalar(1/count).sub(s.pos)
+    if(localCenter.lengthSq()>1e-5)localCenter.normalize()
+    // Le saut historique REPOS -> DONUT est bien ALIGNEMENT 1 -> 8.
+    desired.addScaledVector(align,flock.alignment*.13)
+    desired.addScaledVector(localCenter,flock.cohesion*.0018)
+  }
+  desired.addScaledVector(sep,flock.separation*.055)
+
+  // La nuée entière reste contenue, sans assigner de place à une bille.
+  tmp.copy(centroid).sub(s.pos)
+  const radius=tmp.length()
+  if(radius>74)desired.addScaledVector(tmp.normalize(),flock.centre*.055)
+
+  if(donut){
+    // Champ collectif de circulation : aucune bille n'a de destination fixe.
+    // L'alignement x8 fait circuler les trajectoires voisines ensemble ;
+    // l'évidement central et le rappel radial font émerger un anneau vivant.
+    tmp.copy(s.pos).sub(centroid)
+    const planar=Math.hypot(tmp.x,tmp.y)
+    if(planar>1e-4){
+      const radial=tmp2.set(tmp.x/planar,tmp.y/planar,0)
+      const tangent=new THREE.Vector3(-radial.y,radial.x,0)
+      desired.addScaledVector(tangent,2.75)
+      const ringRadius=61
+      const radialError=(ringRadius-planar)/ringRadius
+      desired.addScaledVector(radial,radialError*1.65)
+      if(planar<28)desired.addScaledVector(radial,(28-planar)/28*3.2)
+    }
+    desired.z+=-tmp.z*.018
+  }else{
+    // REPOS murmuration : volume souple, mobile, sans trou central.
+    desired.addScaledVector(meanHeading,.18)
+    desired.z+=-s.pos.z*.0045
+  }
+
+  s.phase+=.018
+  desired.x+=Math.sin(s.phase+s.i*.071)*.018
+  desired.y+=Math.cos(s.phase*.83+s.i*.049)*.018
+  desired.z+=Math.sin(s.phase*.71+s.i*.033)*.010
+  if(desired.lengthSq()>1e-5)desired.normalize()
+  s.desired.copy(desired)
+}
+
+function updateMurmuration(dt,donut){
+  globalState()
+  // recalcul social tous les 2 frames, intégration continue
+  if((frame++&1)===0)for(const s of state)decide(s,donut)
+  for(const s of state){
+    s.heading.lerp(s.desired,1-Math.exp(-(donut?5.4:3.7)*dt)).normalize()
+    const targetSpeed=flock.speed*(donut?1.08:1)
+    s.speed=THREE.MathUtils.lerp(s.speed,targetSpeed,1-Math.exp(-1.8*dt))
+    s.pos.addScaledVector(s.heading,s.speed*dt)
+    s.o.position.copy(s.pos)
+  }
+}
+
 const clock=new THREE.Clock()
-function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime;if(t<NORMAL_HOLD)return
-  if(t<DONUT_START){
-    if(controls){controls.ECART=28;controls.V1=.75;controls.ROTATION=.11}
-    const k=smooth((t-REPOS_START)/TO_REPOS);reposStep(dt,k);for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}return
-  }
+const startTime=performance.now()/1000
+function animate(){
+  requestAnimationFrame(animate)
+  const dt=Math.min(clock.getDelta(),.035)
+  const t=performance.now()/1000-startTime
+  if(t<NORMAL_HOLD)return
 
-  // REPOS -> DONUT : on conserve le mouvement propre des billes à V1 = 0,75.
-  // Seule la rotation globale de l'Entity est arrêtée progressivement.
-  const d=smooth((t-DONUT_START)/DONUT_TIME)
-  const neutral=smooth(Math.min(1,(t-DONUT_START)/1.15))
-  const spread=THREE.MathUtils.lerp(1,40/28,d)
-  if(controls){
-    controls.ECART=THREE.MathUtils.lerp(28,40,d)
-    controls.V1=.75
-    controls.ROTATION=THREE.MathUtils.lerp(.11,0,neutral)
-  }
-  reposStep(dt,1-d)
-  for(const s of state){tmp.copy(s.donut).multiplyScalar(spread);s.pos.lerp(tmp,.035+.075*d);s.o.position.copy(s.pos)}
-  if(d>=1){if(controls){controls.V1=.75;controls.ROTATION=0;controls.ECART=40}}
+  // Dès l'entrée dans la murmuration, la mécanique structurée d'Entity s'efface.
+  // Le mouvement visible est ensuite exclusivement celui de la murmuration.
+  if(controls){controls.V1=0;controls.ROTATION=0}
+
+  const enter=smooth((t-REPOS_START)/TO_MURMURATION)
+  const donut=t>=DONUT_START
+  flock.alignment=donut?8:1
+  flock.separation=30
+  flock.cohesion=60
+  flock.centre=4.9
+
+  updateMurmuration(dt,donut)
+
+  // Au début seulement, raccord continu entre la matière structurée et la nuée.
+  if(enter<1){for(const s of state)s.o.position.copy(s.start).lerp(s.pos,enter)}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY → REPOS rapide → DONUT · mouvement billes conservé V1 0,75 · rotation Entity arrêtée'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS → DONUT'
+if(label)label.textContent='ENTITY → REPOS MURMURATION → DONUT MURMURATION · 500 billes · ALIGNEMENT 1→8'
+const title=document.querySelector('.lil-gui.root > .title')
+if(title)title.textContent='ENTITY — REPOS → DONUT MURMURATION'
