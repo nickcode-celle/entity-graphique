@@ -85,6 +85,61 @@ THREE.Object3D.prototype.add=function(...objects){
 
 await import('./main-bloom-reference.js')
 
+// HISTOIRE VÉCUE — restitution du rendu validé :
+// la bille reste un matériau éclairé normal ; le vécu apparaît comme un halo séparé.
+function makeHistoryHaloTexture(){
+  const c=document.createElement('canvas')
+  c.width=c.height=256
+  const ctx=c.getContext('2d')
+  const g=ctx.createRadialGradient(128,128,44,128,128,128)
+  g.addColorStop(0,'rgba(255,255,255,0)')
+  g.addColorStop(.36,'rgba(255,255,255,0)')
+  g.addColorStop(.48,'rgba(255,255,255,.34)')
+  g.addColorStop(.62,'rgba(255,255,255,.18)')
+  g.addColorStop(.78,'rgba(255,255,255,.07)')
+  g.addColorStop(1,'rgba(255,255,255,0)')
+  ctx.fillStyle=g
+  ctx.fillRect(0,0,256,256)
+  const t=new THREE.CanvasTexture(c)
+  t.minFilter=THREE.LinearFilter
+  t.magFilter=THREE.LinearFilter
+  t.generateMipmaps=false
+  return t
+}
+
+const historyHaloTexture=makeHistoryHaloTexture()
+for(const object of bodyMarbles){
+  let historyColor=null
+  object.traverse(node=>{
+    if(!node.isMesh)return
+    const materials=Array.isArray(node.material)?node.material:[node.material]
+    for(const material of materials){
+      if(material?.isMeshStandardMaterial && material.emissiveIntensity>0){
+        if(!historyColor)historyColor=material.color.clone()
+        material.emissive.set(0x000000)
+        material.emissiveIntensity=0
+        material.needsUpdate=true
+      }
+    }
+  })
+  if(!historyColor)continue
+
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({
+    map:historyHaloTexture,
+    color:historyColor,
+    transparent:true,
+    opacity:.72,
+    depthWrite:false,
+    depthTest:true,
+    blending:THREE.AdditiveBlending,
+    toneMapped:false
+  }))
+  const unit=object.userData.textureUnitScale||1
+  halo.scale.setScalar(17.2/unit)
+  halo.renderOrder=1
+  object.add(halo)
+}
+
 // Le moteur principal lit controls.V1 à chaque frame : le curseur agit donc
 // directement sur la vitesse réelle des billes dans leur cellule.
 const controllers=()=>document.querySelectorAll('.lil-gui .controller')
