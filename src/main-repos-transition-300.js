@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST VALIDÉ À CONSTRUIRE : Entity normale éligible REPOS -> REPOS murmuration.
-// On conserve le rendu du corps existant et les mêmes billes pendant la métamorphose.
+// TEST : Entity normale éligible REPOS -> véritable comportement collectif REPOS.
+// Les mêmes 300 billes restent visibles pendant toute la métamorphose.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -42,7 +42,7 @@ function shellPoint(i,n=100){
   return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r).multiplyScalar(3.32*28).applyEuler(new THREE.Euler(.21,-.27,.16))
 }
 function cloneMaterial(m){
-  const c=m.clone(); if(c.isMeshStandardMaterial){c.emissive.set(0);c.emissiveIntensity=0} return c
+  const c=m.clone();if(c.isMeshStandardMaterial){c.emissive.set(0);c.emissiveIntensity=0}return c
 }
 function cloneBody(src){
   const c=src.clone(true)
@@ -59,48 +59,92 @@ for(let i=0;i<100;i++){
   entityGroup.add(c);bodies.push(c)
 }
 
-// Configuration d'éligibilité REPOS : 6 domaines dans 40–45 %, écart max 3 points.
-const domains={
-  PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,
-  HISTOIRE_VECUE:36,CAPACITES:28
-}
+// Configuration REPOS validée pour ce test : 6 domaines 40–45 %, écart max 3 points.
+const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28}
+void domains
 
-// Chaque bille garde son identité. On capture sa position juste avant la libération.
 const state=bodies.map((o,i)=>({
-  o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:randomUnit().multiplyScalar(rnd(2,5)),
+  o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   phase:Math.random()*Math.PI*2
 }))
 
 let startTime=performance.now()/1000
-const NORMAL_HOLD=5.0
-const RELEASE=3.2
-const REST_SPEED=.35
-const REST_RADIUS=72
-const REST_Y=42
+const NORMAL_HOLD=5
+const RELEASE=3.4
+// Recette REPOS de la murmuration historique : vitesse .35, cohésion 60,
+// alignement 1, séparation 30. Les coefficients ci-dessous conservent ces rapports.
+const SPEED=.35
+const COHESION=60
+const ALIGNMENT=1
+const SEPARATION=30
+const CENTER=4.9
+const BOUNDS=.51
+const NEIGHBOR_R=34
+const SEP_R=15
 
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
-function boidStep(dt){
-  const center=new THREE.Vector3()
-  for(const s of state)center.add(s.pos)
-  center.multiplyScalar(1/state.length)
+function capture(){
   for(const s of state){
-    const toCenter=center.clone().sub(s.pos)
-    const radial=s.pos.clone(); radial.y*=1.35
-    const tangent=new THREE.Vector3(-radial.z,radial.y*.08,radial.x).normalize()
-    const noise=new THREE.Vector3(Math.sin(s.phase),Math.cos(s.phase*1.31),Math.sin(s.phase*.73+2)).multiplyScalar(.22)
-    s.phase+=dt*.7
-    s.vel.addScaledVector(toCenter,.12*dt)
-    s.vel.addScaledVector(tangent,.32*dt)
-    s.vel.addScaledVector(noise,dt)
-    // enveloppe douce REPOS : cohésion forte, aucune séparation brutale
-    const rr=Math.sqrt(s.pos.x*s.pos.x+s.pos.z*s.pos.z)
-    if(rr>REST_RADIUS)s.vel.addScaledVector(new THREE.Vector3(-s.pos.x,0,-s.pos.z).normalize(),(rr-REST_RADIUS)*.018*dt)
-    if(Math.abs(s.pos.y)>REST_Y)s.vel.y-=Math.sign(s.pos.y)*(Math.abs(s.pos.y)-REST_Y)*.018*dt
-    const targetSpeed=9*REST_SPEED
-    const speed=s.vel.length()
-    if(speed>0)s.vel.multiplyScalar(THREE.MathUtils.lerp(1,targetSpeed/speed,.035))
-    s.pos.addScaledVector(s.vel,dt)
+    s.start.copy(s.o.position)
+    s.pos.copy(s.start)
+    // Le départ collectif hérite du mouvement global : pas d'explosion aléatoire.
+    const radial=s.pos.clone().normalize()
+    const tangent=new THREE.Vector3(-radial.z,radial.y*.12,radial.x).normalize()
+    s.vel.copy(tangent).multiplyScalar(rnd(2.1,3.0)).addScaledVector(randomUnit(),.25)
   }
+}
+
+const avgPos=new THREE.Vector3(),avgVel=new THREE.Vector3(),coh=new THREE.Vector3(),ali=new THREE.Vector3(),sep=new THREE.Vector3(),delta=new THREE.Vector3()
+function reposStep(dt,blend){
+  avgPos.set(0,0,0);avgVel.set(0,0,0)
+  for(const s of state){avgPos.add(s.pos);avgVel.add(s.vel)}
+  avgPos.multiplyScalar(1/state.length);avgVel.multiplyScalar(1/state.length)
+
+  for(let i=0;i<state.length;i++){
+    const s=state[i]
+    coh.set(0,0,0);ali.set(0,0,0);sep.set(0,0,0)
+    let neighbors=0,seps=0
+    // Échantillonnage déterministe : assez dense pour garder une seule murmuration,
+    // sans coût quadratique complet à 300 billes.
+    for(let q=1;q<=18;q++){
+      const j=(i+q*17)%state.length,other=state[j]
+      delta.copy(other.pos).sub(s.pos)
+      const d2=delta.lengthSq()
+      if(d2<NEIGHBOR_R*NEIGHBOR_R){coh.add(other.pos);ali.add(other.vel);neighbors++}
+      if(d2>0&&d2<SEP_R*SEP_R){sep.addScaledVector(delta,-1/Math.max(3,d2));seps++}
+    }
+    if(neighbors){
+      coh.multiplyScalar(1/neighbors).sub(s.pos)
+      ali.multiplyScalar(1/neighbors).sub(s.vel)
+    }else{
+      coh.copy(avgPos).sub(s.pos)
+      ali.copy(avgVel).sub(s.vel)
+    }
+    if(seps)sep.multiplyScalar(1/seps)
+
+    // Les trois forces historiques prennent progressivement le relais des cellules.
+    s.vel.addScaledVector(coh,COHESION*.00062*dt*blend)
+    s.vel.addScaledVector(ali,ALIGNMENT*.018*dt*blend)
+    s.vel.addScaledVector(sep,SEPARATION*.065*dt*blend)
+
+    // CENTRE/BOUNDS : confinement souple du groupe, jamais de sous-groupe qui s'échappe.
+    const fromCenter=s.pos.clone().sub(avgPos)
+    const dist=fromCenter.length()
+    const softBound=72+BOUNDS*22
+    if(dist>softBound)s.vel.addScaledVector(fromCenter.normalize(),-(dist-softBound)*CENTER*.018*dt*blend)
+    s.vel.addScaledVector(avgPos.clone().multiplyScalar(-1),CENTER*.0007*dt*blend)
+
+    // Murmure organique faible, déphasé par bille.
+    s.phase+=dt*(.55+.18*Math.sin(i*.73))
+    s.vel.x+=Math.sin(s.phase+i*.17)*.10*dt*blend
+    s.vel.y+=Math.sin(s.phase*.71+i*.11)*.075*dt*blend
+    s.vel.z+=Math.cos(s.phase*.83+i*.13)*.10*dt*blend
+
+    const targetSpeed=8.8*SPEED
+    const speed=s.vel.length()
+    if(speed>.001)s.vel.multiplyScalar(THREE.MathUtils.lerp(1,targetSpeed/speed,.045*blend))
+  }
+  for(const s of state)s.pos.addScaledVector(s.vel,dt)
 }
 
 let captured=false
@@ -109,20 +153,18 @@ function animate(){
   requestAnimationFrame(animate)
   const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime
   if(t<NORMAL_HOLD)return
-  if(!captured){
-    captured=true
-    for(const s of state){s.start.copy(s.o.position);s.pos.copy(s.start)}
-  }
-  boidStep(dt)
+  if(!captured){captured=true;capture()}
   const k=smooth((t-NORMAL_HOLD)/RELEASE)
+  reposStep(dt,k)
   for(const s of state){
-    // Même bille : sa contrainte de cellule s'efface pendant que le mouvement collectif prend le relais.
-    s.o.position.copy(s.start).lerp(s.pos,k)
+    // Pendant 3,4 s la cellule s'efface; ensuite la bille est entièrement REPOS.
+    if(k<1)s.o.position.copy(s.start).lerp(s.pos,k)
+    else s.o.position.copy(s.pos)
   }
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY — Éligible REPOS · 300 billes · 6 domaines 40–45 % / écart max 3 pts · transition automatique après 5 s'
+if(label)label.textContent='ENTITY — Éligible REPOS · 300 billes · transition vers murmuration REPOS après 5 s'
 const title=document.querySelector('.lil-gui.root > .title')
 if(title)title.textContent='ENTITY — TEST 300 BILLES → REPOS'
