@@ -82,7 +82,7 @@ gui.add(controls,'INTENSITE_LUMIERE',0,8,.05).name('INTENSITÉ LUMIÈRE').onChan
 gui.add(controls,'LUMIERE_AMBIANTE',0,4,.05).name('LUMIÈRE AMBIANTE').onChange(v=>ambientLight.intensity=v)
 gui.add(controls,'ECART',16,44,1).name('TAILLE / ECART').onChange(updateLayout)
 gui.add(controls,'TAILLE_BILLES',.4,1.4,.01).name('TAILLE BILLES').onChange(updateLayout)
-gui.add(controls,'V1',0,2,.01).name('V1 — VIE INTERNE')
+gui.add(controls,'V1',0,5,.01).name('V1 — VITESSE BILLES / CELLULE')
 gui.add(controls,'LIBERTE',0,.5,.01).name('LIBERTÉ CELLULE').onChange(updateCells)
 gui.add(controls,'CHEVAUCHEMENT',.5,2,.01).name('CHEVAUCHEMENT').onChange(updateCells)
 gui.add(controls,'CAMERA',250,800,10).name('CAMERA').onChange(v=>camera.position.z=v)
