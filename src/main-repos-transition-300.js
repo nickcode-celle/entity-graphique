@@ -2,10 +2,9 @@ import * as THREE from 'three'
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
 import GUI from 'lil-gui'
 
-// ENTITY -> REPOS murmuration -> DONUT murmuration
-// Moteur récupéré du prototype historique GPGPU Three.js utilisé avec les billes blanches.
-// REPOS : BOUNDS .51 / CENTRE 4.9 / SEPARATION 30 / ALIGNEMENT 1 / COHESION 60
-// DONUT : même murmuration, saut direct ALIGNEMENT 1 -> 8.
+// TEST ISOLE : DONUT uniquement.
+// On utilise les billes graphiques d'Entity, mais aucun mouvement quotidien d'Entity :
+// ni déplacement dans les cellules, ni rotation globale de la sphère.
 
 const bodies=[]
 let entityGroup=null
@@ -21,33 +20,31 @@ const originalAdd=THREE.Object3D.prototype.add
 THREE.Object3D.prototype.add=function(...objects){
   const result=originalAdd.apply(this,objects)
   for(const o of objects){
-    if(o?.userData?.textureUnitScale&&bodies.length<200){bodies.push(o);entityGroup=this}
+    if(o?.userData?.textureUnitScale&&bodies.length<200){
+      bodies.push(o)
+      entityGroup=this
+    }
   }
   return result
 }
 
+// On charge Entity uniquement pour récupérer ses billes, matières, textures et lumières.
 await import('./main-first-connection-panel.js')
 THREE.Object3D.prototype.add=originalAdd
 GUI.prototype.add=originalGuiAdd
 
+// Toute mécanique propre à Entity est coupée immédiatement.
 if(controls) Object.assign(controls,{
-  ECART:28,
-  TAILLE_BILLES:.90,
-  V1:.75,
-  RELATION_GLOBALE:43,
-  LIBERTE:.15,
-  CHEVAUCHEMENT:1.45,
-  ROTATION:.11,
-  FREQUENCE_INVERSIONS:12,
+  V1:0,
+  ROTATION:0,
+  CAMERA:840,
   BRILLANCE:.62,
   INTENSITE_LUMIERE:2.25,
-  LUMIERE_AMBIANTE:1,
-  CAMERA:280
+  LUMIERE_AMBIANTE:1
 })
+if(entityGroup) entityGroup.rotation.set(0,0,0)
 
 const rnd=(a,b)=>THREE.MathUtils.lerp(a,b,Math.random())
-const randomUnit=()=>new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize()
-
 function cloneMaterial(m){
   const c=m.clone()
   if(c.isMeshStandardMaterial){c.emissive.set(0);c.emissiveIntensity=0}
@@ -62,19 +59,17 @@ function cloneBody(src){
   return c
 }
 
-// DONUT est accessible à 500 billes : on conserve la matière graphique d'Entity.
+// DONUT : 500 billes. Les 300 supplémentaires reprennent l'apparence des billes d'Entity.
 const sourcePool=bodies.slice()
 for(let i=0;i<300;i++){
   const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)])
-  c.userData.__donut500=true
-  c.position.copy(randomUnit().multiplyScalar(rnd(72,98)))
   entityGroup.add(c)
   bodies.push(c)
 }
 
-// ---- MOTEUR HISTORIQUE GPGPU ----
-// Source récupérée : prototype Three.js GPGPU, commit fc06cec57d2eb71639e3db4be4548c5359cbadc2.
-// 20 x 25 = 500 agents. BASE_BOUNDS est recalculé selon la même règle de densité que le prototype.
+// ---- MOTEUR GPGPU DE MURMURATION ----
+// Recette DONUT historique : BOUNDS .51 / CENTRE 4.9 / SEPARATION 30 /
+// ALIGNEMENT 8 / COHESION 60. Aucun passage préalable par REPOS.
 const WIDTH=20
 const HEIGHT=25
 const BIRDS=WIDTH*HEIGHT
@@ -84,6 +79,7 @@ const BASE_BOUNDS=REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)
 const BOUNDS_FACTOR=.51
 const BOUNDS=BASE_BOUNDS*BOUNDS_FACTOR
 const BOUNDS_HALF=BOUNDS/2
+const HISTORICAL_SPEED=.35
 
 const positionShader=`
 uniform float time; uniform float delta;
@@ -116,77 +112,53 @@ void main(){
  if(length(velocity)>limit) velocity=normalize(velocity)*limit; gl_FragColor=vec4(velocity,1.);
 }`
 
-let computeRenderer=null
-let gpuCompute=null
-let positionVariable=null
-let velocityVariable=null
-let pu=null
-let vu=null
-let pixels=null
-let murmurationReady=false
-let readbackFailed=false
+const computeRenderer=new THREE.WebGLRenderer({antialias:false,alpha:true})
+computeRenderer.setPixelRatio(1)
+computeRenderer.setSize(WIDTH,HEIGHT,false)
 
-function initHistoricalMurmuration(){
-  if(murmurationReady)return
+const gpuCompute=new GPUComputationRenderer(WIDTH,HEIGHT,computeRenderer)
+const dtPosition=gpuCompute.createTexture()
+const dtVelocity=gpuCompute.createTexture()
 
-  // Renderer uniquement destiné au calcul GPU : rien n'est ajouté à l'écran.
-  computeRenderer=new THREE.WebGLRenderer({antialias:false,alpha:true})
-  computeRenderer.setPixelRatio(1)
-  computeRenderer.setSize(WIDTH,HEIGHT,false)
-
-  gpuCompute=new GPUComputationRenderer(WIDTH,HEIGHT,computeRenderer)
-  const dtPosition=gpuCompute.createTexture()
-  const dtVelocity=gpuCompute.createTexture()
-
-  // La simulation démarre exactement depuis les positions visibles des mêmes billes.
-  for(let i=0;i<BIRDS;i++){
-    const k=i*4
-    const p=bodies[i].position
-    dtPosition.image.data[k]=THREE.MathUtils.clamp(p.x,-BOUNDS_HALF,BOUNDS_HALF)
-    dtPosition.image.data[k+1]=THREE.MathUtils.clamp(p.y,-BOUNDS_HALF,BOUNDS_HALF)
-    dtPosition.image.data[k+2]=THREE.MathUtils.clamp(p.z,-BOUNDS_HALF,BOUNDS_HALF)
-    dtPosition.image.data[k+3]=1
-    dtVelocity.image.data[k]=(Math.random()-.5)*10
-    dtVelocity.image.data[k+1]=(Math.random()-.5)*10
-    dtVelocity.image.data[k+2]=(Math.random()-.5)*10
-    dtVelocity.image.data[k+3]=1
-  }
-
-  velocityVariable=gpuCompute.addVariable('textureVelocity',velocityShader,dtVelocity)
-  positionVariable=gpuCompute.addVariable('texturePosition',positionShader,dtPosition)
-  gpuCompute.setVariableDependencies(velocityVariable,[positionVariable,velocityVariable])
-  gpuCompute.setVariableDependencies(positionVariable,[positionVariable,velocityVariable])
-
-  pu=positionVariable.material.uniforms
-  vu=velocityVariable.material.uniforms
-  pu.time={value:0}
-  pu.delta={value:0}
-  vu.time={value:1}
-  vu.delta={value:0}
-  vu.testing={value:1}
-  vu.separationDistance={value:30}
-  vu.alignmentDistance={value:1}
-  vu.cohesionDistance={value:60}
-  vu.freedomFactor={value:.75}
-  vu.centralPull={value:4.9}
-  // Predator désactivé, comme lorsque le pointeur est hors de la zone d'influence.
-  vu.predator={value:new THREE.Vector3(10000,10000,0)}
-  velocityVariable.material.defines.BOUNDS=BOUNDS.toFixed(2)
-  velocityVariable.wrapS=velocityVariable.wrapT=positionVariable.wrapS=positionVariable.wrapT=THREE.RepeatWrapping
-
-  const err=gpuCompute.init()
-  if(err!==null)throw new Error(err)
-
-  pixels=new Float32Array(BIRDS*4)
-  murmurationReady=true
+// Départ directement en nuée : aucune forme Entity n'est affichée avant le DONUT.
+for(let i=0;i<BIRDS;i++){
+  const k=i*4
+  dtPosition.image.data[k]=rnd(-BOUNDS_HALF,BOUNDS_HALF)
+  dtPosition.image.data[k+1]=rnd(-BOUNDS_HALF,BOUNDS_HALF)
+  dtPosition.image.data[k+2]=rnd(-BOUNDS_HALF,BOUNDS_HALF)
+  dtPosition.image.data[k+3]=1
+  dtVelocity.image.data[k]=(Math.random()-.5)*10
+  dtVelocity.image.data[k+1]=(Math.random()-.5)*10
+  dtVelocity.image.data[k+2]=(Math.random()-.5)*10
+  dtVelocity.image.data[k+3]=1
 }
 
-const NORMAL_HOLD=4
-const REPOS_HOLD=5
-const DONUT_START=NORMAL_HOLD+REPOS_HOLD
-const HISTORICAL_SPEED=.35
-const clock=new THREE.Clock()
-const started=performance.now()/1000
+const velocityVariable=gpuCompute.addVariable('textureVelocity',velocityShader,dtVelocity)
+const positionVariable=gpuCompute.addVariable('texturePosition',positionShader,dtPosition)
+gpuCompute.setVariableDependencies(velocityVariable,[positionVariable,velocityVariable])
+gpuCompute.setVariableDependencies(positionVariable,[positionVariable,velocityVariable])
+
+const pu=positionVariable.material.uniforms
+const vu=velocityVariable.material.uniforms
+pu.time={value:0}
+pu.delta={value:0}
+vu.time={value:1}
+vu.delta={value:0}
+vu.testing={value:1}
+vu.separationDistance={value:30}
+vu.alignmentDistance={value:8}
+vu.cohesionDistance={value:60}
+vu.freedomFactor={value:.75}
+vu.centralPull={value:4.9}
+vu.predator={value:new THREE.Vector3(10000,10000,0)}
+velocityVariable.material.defines.BOUNDS=BOUNDS.toFixed(2)
+velocityVariable.wrapS=velocityVariable.wrapT=positionVariable.wrapS=positionVariable.wrapT=THREE.RepeatWrapping
+
+const err=gpuCompute.init()
+if(err!==null)throw new Error(err)
+
+const pixels=new Float32Array(BIRDS*4)
+let readbackFailed=false
 
 function updateBodiesFromGpu(){
   if(readbackFailed)return
@@ -203,27 +175,16 @@ function updateBodiesFromGpu(){
   }
 }
 
+const clock=new THREE.Clock()
 function animate(){
   requestAnimationFrame(animate)
   const dt=Math.min(clock.getDelta(),.035)
-  const t=performance.now()/1000-started
-  if(t<NORMAL_HOLD)return
 
-  if(!murmurationReady)initHistoricalMurmuration()
-
-  // La structure quotidienne d'Entity cesse de piloter la matière ; les mêmes billes
-  // sont désormais pilotées par le moteur historique de murmuration.
+  // Verrou absolu : la sphère Entity et le mouvement intra-cellule restent neutralisés.
   if(controls){controls.V1=0;controls.ROTATION=0}
+  if(entityGroup)entityGroup.rotation.set(0,0,0)
 
-  const donut=t>=DONUT_START
-  vu.separationDistance.value=30
-  vu.cohesionDistance.value=60
-  vu.centralPull.value=4.9
-  // Recette historique : REPOS=1 puis saut DIRECT à 8 pour faire émerger DONUT.
-  vu.alignmentDistance.value=donut?8:1
-
-  const ramp=THREE.MathUtils.smoothstep(t,NORMAL_HOLD,NORMAL_HOLD+1.15)
-  const simulationDelta=dt*HISTORICAL_SPEED*ramp
+  const simulationDelta=dt*HISTORICAL_SPEED
   const now=performance.now()
   pu.time.value=now
   pu.delta.value=simulationDelta
@@ -236,6 +197,6 @@ function animate(){
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY → REPOS GPGPU historique → DONUT GPGPU historique · 500 billes · ALIGNEMENT 1→8'
+if(label)label.textContent='DONUT — murmuration seule · 500 billes Entity · aucun mouvement Entity'
 const title=document.querySelector('.lil-gui.root > .title')
-if(title)title.textContent='ENTITY — REPOS → DONUT · MOTEUR HISTORIQUE'
+if(title)title.textContent='ENTITY — TEST DONUT SEUL'
