@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST REPOS : Entity éligible -> contraction/noyau -> respirations 28/40 -> REPOS.
+// TEST REPOS : Entity éligible -> contraction/noyau -> respirations réelles ECART 28/40 -> REPOS.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -32,11 +32,10 @@ function cloneBody(src){const c=src.clone(true);c.traverse(n=>{if(n.material)n.m
 const sourcePool=bodies.slice()
 for(let i=0;i<100;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__repos300=true;c.position.copy(shellPoint(i));entityGroup.add(c);bodies.push(c)}
 
-// 6 domaines 40–45 %, écart maximal 3 points : REPOS graphiquement éligible.
 const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28};void domains
 
 const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2}))
-const NORMAL_HOLD=5,RELEASE=2.7,BREATH_START=NORMAL_HOLD+RELEASE,BREATH_CYCLES=4,BREATH_PERIOD=2.7
+const NORMAL_HOLD=5,RELEASE=2.7,BREATH_START=NORMAL_HOLD+RELEASE,BREATH_CYCLES=4,BREATH_PERIOD=2.9
 const SPEED=.35,COHESION=60,ALIGNMENT=1,SEPARATION=30,CENTER=4.9,BOUNDS=.51,NEIGHBOR_R=34,SEP_R=15
 let startTime=performance.now()/1000,captured=false
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
@@ -56,15 +55,13 @@ function reposStep(dt,blend){
   for(const s of state)s.pos.addScaledVector(s.vel,dt)
 }
 
-// Respiration REPOS : on reproduit graphiquement le curseur ECART 28 -> 40 -> 28.
-// Le centre instantané est conservé : aucun déplacement artificiel de l'Entity.
-function breathingScale(t){
-  if(t<BREATH_START)return 1
+function breathingEcart(t){
+  if(t<BREATH_START)return 28
   const elapsed=t-BREATH_START,total=BREATH_CYCLES*BREATH_PERIOD
-  if(elapsed>=total)return 1
+  if(elapsed>=total)return 28
   const phase=(elapsed%BREATH_PERIOD)/BREATH_PERIOD
   const wave=.5-.5*Math.cos(phase*Math.PI*2)
-  return THREE.MathUtils.lerp(1,40/28,smooth(wave))
+  return THREE.MathUtils.lerp(28,40,smooth(wave))
 }
 
 const clock=new THREE.Clock()
@@ -73,17 +70,46 @@ function animate(){
   const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime
   if(t<NORMAL_HOLD)return
   if(!captured){captured=true;capture()}
-  const k=smooth((t-NORMAL_HOLD)/RELEASE);reposStep(dt,k)
-  const breath=breathingScale(t)
-  avgPos.set(0,0,0);for(const s of state)avgPos.add(s.pos);avgPos.multiplyScalar(1/state.length)
-  for(const s of state){
-    const target=s.pos.clone()
-    if(breath!==1)target.sub(avgPos).multiplyScalar(breath).add(avgPos)
-    if(k<1)s.o.position.copy(s.start).lerp(target,k);else s.o.position.copy(target)
+
+  const breathEnd=BREATH_START+BREATH_CYCLES*BREATH_PERIOD
+  const inBreath=t>=BREATH_START&&t<breathEnd
+  if(inBreath){
+    // Important : on pilote le vrai paramètre ECART du moteur normal.
+    // Les 200 billes natives rejoignent réellement leurs nouvelles cellules,
+    // ce qui permet aux halos/empreintes de dessiner leur déplacement.
+    if(controls)controls.ECART=breathingEcart(t)
+
+    // Le moteur normal vient de déplacer les billes natives avant ce callback :
+    // on ne réécrit donc surtout pas leurs positions pendant la respiration.
+    for(let i=0;i<200;i++){
+      const s=state[i]
+      s.pos.copy(s.o.position)
+      if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)
+    }
+
+    // Les 100 billes nées pour atteindre 300 ne font pas partie du moteur de cellules historique.
+    // Elles suivent le même ECART avec inertie, sans téléportation radiale.
+    const targetScale=(controls?.ECART||28)/28
+    avgPos.set(0,0,0);for(let i=200;i<300;i++)avgPos.add(state[i].pos);avgPos.multiplyScalar(1/100)
+    for(let i=200;i<300;i++){
+      const s=state[i],baseDir=s.start.clone().normalize(),target=baseDir.multiplyScalar(s.start.length()*targetScale)
+      const accel=target.sub(s.pos).multiplyScalar(2.1)
+      s.vel.addScaledVector(accel,dt)
+      s.vel.multiplyScalar(Math.pow(.90,dt*60))
+      s.pos.addScaledVector(s.vel,dt)
+      s.o.position.copy(s.pos)
+    }
+    return
   }
+
+  if(t>=breathEnd&&controls)controls.ECART=28
+
+  const k=smooth((t-NORMAL_HOLD)/RELEASE)
+  reposStep(dt,k)
+  for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY — REPOS · 300 billes · contraction puis 4 respirations ECART 28 ↔ 40'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / RESPIRATION'
+if(label)label.textContent='ENTITY — REPOS · 300 billes · 4 respirations via le vrai curseur ECART 28 ↔ 40'
+const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / ECART RÉEL'
