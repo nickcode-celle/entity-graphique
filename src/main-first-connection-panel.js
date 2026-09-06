@@ -8,14 +8,12 @@ function randomUnit(){
   return new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize()
 }
 
-// Capture le vrai objet controls sans modifier le fonctionnement de lil-gui.
 const originalGuiAdd=GUI.prototype.add
 GUI.prototype.add=function(object,property,...args){
   if(property==='RELATION_GLOBALE'||property==='V1') controlsRef=object
   return originalGuiAdd.call(this,object,property,...args)
 }
 
-// Ombres 3D + capture des 200 billes du corps.
 const originalObjectAdd=THREE.Object3D.prototype.add
 THREE.Object3D.prototype.add=function(...objects){
   const result=originalObjectAdd.apply(this,objects)
@@ -35,12 +33,8 @@ THREE.Object3D.prototype.add=function(...objects){
       }
     })
 
-    // Les billes du corps reçoivent textureUnitScale juste avant leur ajout à entityGroup.
     if(object?.userData?.textureUnitScale && bodyMarbles.length<200){
       bodyMarbles.push(object)
-
-      // Lors du premier updateLayout, main-bloom-reference passe ici le vecteur travel
-      // permanent de cette bille. On le capture puis on corrige uniquement sa limite.
       const position=object.position
       const originalPositionAdd=position.add.bind(position)
       position.add=function(v){
@@ -48,19 +42,11 @@ THREE.Object3D.prototype.add=function(...objects){
           object.userData.__travelVector=v
           const travel=v
           const originalTravelAddScaled=travel.addScaledVector.bind(travel)
-
           travel.addScaledVector=function(direction,scale){
             originalTravelAddScaled(direction,scale)
-
             if(!controlsRef) return this
             const maxR=controlsRef.ECART*controlsRef.LIBERTE*controlsRef.CHEVAUCHEMENT
-            if(maxR<=0){
-              this.set(0,0,0)
-              return this
-            }
-
-            // Avant que le moteur ne plaque la bille sur la frontière, on la renvoie
-            // vers l'intérieur en conservant une composante tangentielle naturelle.
+            if(maxR<=0){this.set(0,0,0);return this}
             if(this.length()>maxR*.985){
               const normal=this.clone().normalize()
               const outward=direction.dot(normal)
@@ -68,9 +54,7 @@ THREE.Object3D.prototype.add=function(...objects){
                 direction.addScaledVector(normal,-2*outward)
                 direction.addScaledVector(randomUnit(),.12)
                 direction.normalize()
-              }else{
-                direction.addScaledVector(normal,-.18).normalize()
-              }
+              }else direction.addScaledVector(normal,-.18).normalize()
               this.setLength(maxR*.955)
             }
             return this
@@ -85,18 +69,18 @@ THREE.Object3D.prototype.add=function(...objects){
 
 await import('./main-bloom-reference.js')
 
-// HISTOIRE VÉCUE — restitution du rendu validé :
-// la bille reste un matériau éclairé normal ; le vécu apparaît comme un halo séparé.
+// HISTOIRE VÉCUE : la bille reste 100 % soumise à l'éclairage et aux ombres.
+// Seul un halo extérieur, de la couleur de la bille, porte la patine visuelle.
 function makeHistoryHaloTexture(){
   const c=document.createElement('canvas')
   c.width=c.height=256
   const ctx=c.getContext('2d')
-  const g=ctx.createRadialGradient(128,128,44,128,128,128)
+  const g=ctx.createRadialGradient(128,128,0,128,128,128)
   g.addColorStop(0,'rgba(255,255,255,0)')
-  g.addColorStop(.36,'rgba(255,255,255,0)')
-  g.addColorStop(.48,'rgba(255,255,255,.34)')
-  g.addColorStop(.62,'rgba(255,255,255,.18)')
-  g.addColorStop(.78,'rgba(255,255,255,.07)')
+  g.addColorStop(.60,'rgba(255,255,255,0)')
+  g.addColorStop(.66,'rgba(255,255,255,.30)')
+  g.addColorStop(.76,'rgba(255,255,255,.16)')
+  g.addColorStop(.88,'rgba(255,255,255,.06)')
   g.addColorStop(1,'rgba(255,255,255,0)')
   ctx.fillStyle=g
   ctx.fillRect(0,0,256,256)
@@ -114,12 +98,12 @@ for(const object of bodyMarbles){
     if(!node.isMesh)return
     const materials=Array.isArray(node.material)?node.material:[node.material]
     for(const material of materials){
-      if(material?.isMeshStandardMaterial && material.emissiveIntensity>0){
-        if(!historyColor)historyColor=material.color.clone()
-        material.emissive.set(0x000000)
-        material.emissiveIntensity=0
-        material.needsUpdate=true
-      }
+      if(!material?.isMeshStandardMaterial)continue
+      if(material.emissiveIntensity>0 && !historyColor)historyColor=material.color.clone()
+      // Aucune bille du corps ne doit produire sa propre lumière.
+      material.emissive.set(0x000000)
+      material.emissiveIntensity=0
+      material.needsUpdate=true
     }
   })
   if(!historyColor)continue
@@ -135,14 +119,13 @@ for(const object of bodyMarbles){
     toneMapped:false
   }))
   const unit=object.userData.textureUnitScale||1
-  halo.scale.setScalar(17.2/unit)
-  halo.renderOrder=1
+  // Le centre transparent couvre entièrement la bille : le halo ne peut plus
+  // éclaircir sa surface ni masquer une ombre portée.
+  halo.scale.setScalar(19.2/unit)
+  halo.renderOrder=0
   object.add(halo)
 }
 
-// Le moteur principal lit controls.V1 à chaque frame : le curseur agit donc
-// directement sur la vitesse réelle des billes dans leur cellule.
 const controllers=()=>document.querySelectorAll('.lil-gui .controller')
 void controllers
-
 GUI.prototype.add=originalGuiAdd
