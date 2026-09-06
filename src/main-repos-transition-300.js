@@ -1,130 +1,53 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST REPOS : Entity -> REPOS 8 s -> écarté 3 s -> REPOS 8 s -> écarté 3 s -> REPOS 10 s -> Entity.
+// TEST : ENTITY -> REPOS rapide -> DONUT. 500 billes, même matière, sans remplacement visuel.
 const bodies=[]
 let entityGroup=null
 let controls=null
-
 const originalGuiAdd=GUI.prototype.add
-GUI.prototype.add=function(object,property,...args){
-  if(['ECART','TAILLE_BILLES','V1','RELATION_GLOBALE','LIBERTE','CHEVAUCHEMENT','ROTATION','FREQUENCE_INVERSIONS','BRILLANCE','INTENSITE_LUMIERE','LUMIERE_AMBIANTE','CAMERA'].includes(property)) controls=object
-  return originalGuiAdd.call(this,object,property,...args)
-}
+GUI.prototype.add=function(object,property,...args){if(['ECART','TAILLE_BILLES','V1','RELATION_GLOBALE','LIBERTE','CHEVAUCHEMENT','ROTATION','FREQUENCE_INVERSIONS','BRILLANCE','INTENSITE_LUMIERE','LUMIERE_AMBIANTE','CAMERA'].includes(property))controls=object;return originalGuiAdd.call(this,object,property,...args)}
 const originalAdd=THREE.Object3D.prototype.add
-THREE.Object3D.prototype.add=function(...objects){
-  const result=originalAdd.apply(this,objects)
-  for(const o of objects)if(o?.userData?.textureUnitScale&&bodies.length<200){bodies.push(o);entityGroup=this}
-  return result
-}
-
+THREE.Object3D.prototype.add=function(...objects){const result=originalAdd.apply(this,objects);for(const o of objects)if(o?.userData?.textureUnitScale&&bodies.length<200){bodies.push(o);entityGroup=this}return result}
 await import('./main-first-connection-panel.js')
-THREE.Object3D.prototype.add=originalAdd
-GUI.prototype.add=originalGuiAdd
+THREE.Object3D.prototype.add=originalAdd;GUI.prototype.add=originalGuiAdd
 
-if(controls)Object.assign(controls,{ECART:28,TAILLE_BILLES:.90,V1:1,RELATION_GLOBALE:43,LIBERTE:.15,CHEVAUCHEMENT:1.45,ROTATION:.11,FREQUENCE_INVERSIONS:12,BRILLANCE:.62,INTENSITE_LUMIERE:2.25,LUMIERE_AMBIANTE:1,CAMERA:280})
+// Nouvelle référence Entity de base : V1 = 0,75.
+if(controls)Object.assign(controls,{ECART:28,TAILLE_BILLES:.90,V1:.75,RELATION_GLOBALE:43,LIBERTE:.15,CHEVAUCHEMENT:1.45,ROTATION:.11,FREQUENCE_INVERSIONS:12,BRILLANCE:.62,INTENSITE_LUMIERE:2.25,LUMIERE_AMBIANTE:1,CAMERA:280})
 
-const GOLDEN=Math.PI*(3-Math.sqrt(5)),rnd=(a,b)=>THREE.MathUtils.lerp(a,b,Math.random())
+const rnd=(a,b)=>THREE.MathUtils.lerp(a,b,Math.random())
 const randomUnit=()=>new THREE.Vector3(Math.random()*2-1,Math.random()*2-1,Math.random()*2-1).normalize()
-function shellPoint(i,n=100){const y=1-(i+.5)*2/n,r=Math.sqrt(Math.max(0,1-y*y)),a=i*GOLDEN+2.31;return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r).multiplyScalar(3.32*28).applyEuler(new THREE.Euler(.21,-.27,.16))}
 function cloneMaterial(m){const c=m.clone();if(c.isMeshStandardMaterial){c.emissive.set(0);c.emissiveIntensity=0}return c}
 function cloneBody(src){const c=src.clone(true);c.traverse(n=>{if(n.material)n.material=Array.isArray(n.material)?n.material.map(cloneMaterial):cloneMaterial(n.material);if(n.isMesh){n.castShadow=true;n.receiveShadow=true}});return c}
 const sourcePool=bodies.slice()
-for(let i=0;i<100;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__repos300=true;c.position.copy(shellPoint(i));entityGroup.add(c);bodies.push(c)}
+// DONUT est éligible à partir de 500 billes : ajout de 300 billes de même matière.
+for(let i=0;i<300;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__donut500=true;const u=randomUnit();c.position.copy(u.multiplyScalar(rnd(72,98)));entityGroup.add(c);bodies.push(c)}
 
-const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28};void domains
-const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2,returnFrom:new THREE.Vector3()}))
+const state=bodies.map((o,i)=>({o,i,start:o.position.clone(),pos:o.position.clone(),vel:randomUnit().multiplyScalar(rnd(1.8,2.8)),phase:Math.random()*Math.PI*2,donut:new THREE.Vector3()}))
+// Cible DONUT : tore 3D, orientation légèrement inclinée, distribution continue des 500 billes.
+const tilt=new THREE.Euler(.48,.10,-.22)
+for(const s of state){const a=(s.i/state.length)*Math.PI*2+Math.sin(s.i*2.17)*.045;const b=((s.i*137)%state.length)/state.length*Math.PI*2;const R=64,r=22;const p=new THREE.Vector3((R+r*Math.cos(b))*Math.cos(a),r*Math.sin(b),(R+r*Math.cos(b))*Math.sin(a));p.applyEuler(tilt);s.donut.copy(p)}
 
-const NORMAL_HOLD=5,RELEASE=2.7,REPOS_SETTLE=4
-const FIRST_REPOS_HOLD=8,MIDDLE_REPOS_HOLD=8,FINAL_REPOS_HOLD=10
-const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,RETURN_TIME=3
-const REPOS_READY=NORMAL_HOLD+RELEASE+REPOS_SETTLE
-const OPEN1_START=REPOS_READY+FIRST_REPOS_HOLD
-const WIDE1_START=OPEN1_START+OPEN_TIME
-const CLOSE1_START=WIDE1_START+WIDE_HOLD
-const MIDDLE_REPOS_START=CLOSE1_START+CLOSE_TIME
-const OPEN2_START=MIDDLE_REPOS_START+MIDDLE_REPOS_HOLD
-const WIDE2_START=OPEN2_START+OPEN_TIME
-const CLOSE2_START=WIDE2_START+WIDE_HOLD
-const FINAL_REPOS_START=CLOSE2_START+CLOSE_TIME
-const RETURN_START=FINAL_REPOS_START+FINAL_REPOS_HOLD
-const SPEED=.35,COHESION=60,ALIGNMENT=1,SEPARATION=30,CENTER=4.9,BOUNDS=.51,NEIGHBOR_R=34,SEP_R=15
-let startTime=performance.now()/1000,captured=false,returnCaptured=false
+const NORMAL_HOLD=4,TO_REPOS=2.2,REPOS_HOLD=2,DONUT_TIME=5
+const REPOS_START=NORMAL_HOLD,REPOS_READY=REPOS_START+TO_REPOS,DONUT_START=REPOS_READY+REPOS_HOLD
+const center=new THREE.Vector3(),tmp=new THREE.Vector3()
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
-function capture(){for(const s of state){s.start.copy(s.o.position);s.pos.copy(s.start);const radial=s.pos.clone().normalize(),tangent=new THREE.Vector3(-radial.z,radial.y*.12,radial.x).normalize();s.vel.copy(tangent).multiplyScalar(rnd(2.1,3)).addScaledVector(randomUnit(),.25)}}
-const avgPos=new THREE.Vector3(),avgVel=new THREE.Vector3(),coh=new THREE.Vector3(),ali=new THREE.Vector3(),sep=new THREE.Vector3(),delta=new THREE.Vector3()
-function reposStep(dt,blend){
-  avgPos.set(0,0,0);avgVel.set(0,0,0);for(const s of state){avgPos.add(s.pos);avgVel.add(s.vel)}avgPos.multiplyScalar(1/state.length);avgVel.multiplyScalar(1/state.length)
-  for(let i=0;i<state.length;i++){
-    const s=state[i];coh.set(0,0,0);ali.set(0,0,0);sep.set(0,0,0);let neighbors=0,seps=0
-    for(let q=1;q<=18;q++){const other=state[(i+q*17)%state.length];delta.copy(other.pos).sub(s.pos);const d2=delta.lengthSq();if(d2<NEIGHBOR_R*NEIGHBOR_R){coh.add(other.pos);ali.add(other.vel);neighbors++}if(d2>0&&d2<SEP_R*SEP_R){sep.addScaledVector(delta,-1/Math.max(3,d2));seps++}}
-    if(neighbors){coh.multiplyScalar(1/neighbors).sub(s.pos);ali.multiplyScalar(1/neighbors).sub(s.vel)}else{coh.copy(avgPos).sub(s.pos);ali.copy(avgVel).sub(s.vel)}if(seps)sep.multiplyScalar(1/seps)
-    s.vel.addScaledVector(coh,COHESION*.00062*dt*blend);s.vel.addScaledVector(ali,ALIGNMENT*.018*dt*blend);s.vel.addScaledVector(sep,SEPARATION*.065*dt*blend)
-    const fromCenter=s.pos.clone().sub(avgPos),dist=fromCenter.length(),softBound=72+BOUNDS*22;if(dist>softBound)s.vel.addScaledVector(fromCenter.normalize(),-(dist-softBound)*CENTER*.018*dt*blend);s.vel.addScaledVector(avgPos.clone().multiplyScalar(-1),CENTER*.0007*dt*blend)
-    s.phase+=dt*(.55+.18*Math.sin(i*.73));s.vel.x+=Math.sin(s.phase+i*.17)*.10*dt*blend;s.vel.y+=Math.sin(s.phase*.71+i*.11)*.075*dt*blend;s.vel.z+=Math.cos(s.phase*.83+i*.13)*.10*dt*blend
-    const targetSpeed=8.8*SPEED,speed=s.vel.length();if(speed>.001)s.vel.multiplyScalar(THREE.MathUtils.lerp(1,targetSpeed/speed,.045*blend))
-  }
-  for(const s of state)s.pos.addScaledVector(s.vel,dt)
-}
+function reposStep(dt,strength=1){center.set(0,0,0);for(const s of state)center.add(s.pos);center.multiplyScalar(1/state.length);for(const s of state){tmp.copy(center).sub(s.pos);s.vel.addScaledVector(tmp,.018*dt*strength);const radial=s.pos.clone().sub(center);if(radial.length()>62)s.vel.addScaledVector(radial.normalize(),-.7*dt*strength);s.phase+=dt*.7;s.vel.x+=Math.sin(s.phase+s.i*.17)*.05*dt;s.vel.y+=Math.cos(s.phase*.8+s.i*.11)*.04*dt;s.vel.z+=Math.sin(s.phase*.9+s.i*.13)*.05*dt;const speed=s.vel.length();if(speed>3.1)s.vel.multiplyScalar(3.1/speed);s.pos.addScaledVector(s.vel,dt)}}
 
-// Séquence vérifiée : REPOS 8 s -> large 3 s -> REPOS 8 s -> large 3 s -> REPOS 10 s.
-function sequenceEcart(t){
-  if(t<OPEN1_START)return 28
-  if(t<WIDE1_START)return THREE.MathUtils.lerp(28,40,smooth((t-OPEN1_START)/OPEN_TIME))
-  if(t<CLOSE1_START)return 40
-  if(t<MIDDLE_REPOS_START)return THREE.MathUtils.lerp(40,28,smooth((t-CLOSE1_START)/CLOSE_TIME))
-  if(t<OPEN2_START)return 28
-  if(t<WIDE2_START)return THREE.MathUtils.lerp(28,40,smooth((t-OPEN2_START)/OPEN_TIME))
-  if(t<CLOSE2_START)return 40
-  if(t<FINAL_REPOS_START)return THREE.MathUtils.lerp(40,28,smooth((t-CLOSE2_START)/CLOSE_TIME))
-  return 28
-}
-
-function driveEcart(dt,t){
-  if(controls)controls.ECART=sequenceEcart(t)
-  for(let i=0;i<200;i++){const s=state[i];s.pos.copy(s.o.position);if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)}
-  const targetScale=(controls?.ECART||28)/28
-  for(let i=200;i<300;i++){
-    const s=state[i],baseDir=s.start.clone().normalize(),target=baseDir.multiplyScalar(s.start.length()*targetScale),accel=target.sub(s.pos).multiplyScalar(2.1)
-    s.vel.addScaledVector(accel,dt);s.vel.multiplyScalar(Math.pow(.90,dt*60));s.pos.addScaledVector(s.vel,dt);s.o.position.copy(s.pos)
-  }
-}
-
+let startTime=performance.now()/1000
 const clock=new THREE.Clock()
-function animate(){
-  requestAnimationFrame(animate)
-  const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime
-  if(t<NORMAL_HOLD)return
-  if(!captured){captured=true;capture()}
-
-  // Entity -> REPOS, puis maintien REPOS 8 secondes avant le premier écartement.
-  if(t<OPEN1_START){
-    if(controls)controls.ECART=28
-    const k=smooth((t-NORMAL_HOLD)/RELEASE);reposStep(dt,k)
-    for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
-    return
-  }
-
-  // Deux écartements seulement, avec 8 secondes complètes sur le REPOS intermédiaire.
-  if(t<FINAL_REPOS_START){driveEcart(dt,t);return}
-
-  // Dernier REPOS : 10 secondes complètes avant le retour à Entity.
-  if(t<RETURN_START){
-    if(controls)controls.ECART=28
-    reposStep(dt,1)
-    for(const s of state)s.o.position.copy(s.pos)
-    return
-  }
-
-  // Retour progressif vers la forme Entity de départ.
-  if(controls)controls.ECART=28
-  if(!returnCaptured){returnCaptured=true;for(const s of state)s.returnFrom.copy(s.o.position)}
-  const r=smooth((t-RETURN_START)/RETURN_TIME)
-  for(const s of state)s.o.position.copy(s.returnFrom).lerp(s.start,r)
-  if(r>=1){for(const s of state){s.pos.copy(s.start);s.vel.set(0,0,0)}}
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.035),t=performance.now()/1000-startTime;if(t<NORMAL_HOLD)return
+  if(controls){controls.ECART=28;controls.V1=.75}
+  if(t<DONUT_START){const k=smooth((t-REPOS_START)/TO_REPOS);reposStep(dt,k);for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}return}
+  // Passage REPOS -> DONUT : équivalent visuel du saut historique ALIGNEMENT 1 -> 8,
+  // matérialisé ici par l'organisation collective progressive en tore.
+  const d=smooth((t-DONUT_START)/DONUT_TIME)
+  reposStep(dt,1-d)
+  for(const s of state){s.pos.lerp(s.donut,.035+.075*d);s.o.position.copy(s.pos)}
+  if(d>=1){for(const s of state)s.o.position.copy(s.donut)}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY → REPOS 8 s → ÉCARTÉ 3 s → REPOS 8 s → ÉCARTÉ 3 s → REPOS 10 s → ENTITY'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / SÉQUENCE 8-3-8-3-10'
+if(label)label.textContent='ENTITY → REPOS rapide → DONUT · 500 billes · V1 base 0,75'
+const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS → DONUT'
