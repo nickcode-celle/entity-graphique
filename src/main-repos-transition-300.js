@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// TEST REPOS : Entity éligible -> contraction/noyau -> REPOS complet -> respirations réelles ECART 28/40.
+// TEST REPOS : Entity éligible -> contraction/noyau -> REPOS -> respirations -> REPOS -> retour Entity.
 const bodies=[]
 let entityGroup=null
 let controls=null
@@ -33,18 +33,20 @@ const sourcePool=bodies.slice()
 for(let i=0;i<100;i++){const c=cloneBody(sourcePool[Math.floor(Math.random()*sourcePool.length)]);c.userData.__repos300=true;c.position.copy(shellPoint(i));entityGroup.add(c);bodies.push(c)}
 
 const domains={PERSONNALITE:42,RELATION:43,GOUTS:41,OPINIONS_VALEURS:44,CONNAISSANCES:42,MONDE_PROPRE:43,HISTOIRE_VECUE:36,CAPACITES:28};void domains
-const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2}))
+const state=bodies.map((o,i)=>({o,i,start:new THREE.Vector3(),pos:new THREE.Vector3(),vel:new THREE.Vector3(),phase:Math.random()*Math.PI*2,returnFrom:new THREE.Vector3()}))
 
 const NORMAL_HOLD=5
 const RELEASE=2.7
 const REPOS_SETTLE=4.0
-const REPOS_HOLD_BEFORE_FIRST=3.0
+const REPOS_HOLD_BEFORE_FIRST=6.0
 const BREATH_CYCLES=4
-const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,REPOS_HOLD=3
+const OPEN_TIME=2.25,WIDE_HOLD=3,CLOSE_TIME=2.25,REPOS_HOLD=6
 const BREATH_PERIOD=OPEN_TIME+WIDE_HOLD+CLOSE_TIME+REPOS_HOLD
 const BREATH_START=NORMAL_HOLD+RELEASE+REPOS_SETTLE+REPOS_HOLD_BEFORE_FIRST
+const FINAL_REPOS_HOLD=6
+const RETURN_TIME=3.0
 const SPEED=.35,COHESION=60,ALIGNMENT=1,SEPARATION=30,CENTER=4.9,BOUNDS=.51,NEIGHBOR_R=34,SEP_R=15
-let startTime=performance.now()/1000,captured=false
+let startTime=performance.now()/1000,captured=false,returnCaptured=false
 function smooth(t){t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
 function capture(){for(const s of state){s.start.copy(s.o.position);s.pos.copy(s.start);const radial=s.pos.clone().normalize(),tangent=new THREE.Vector3(-radial.z,radial.y*.12,radial.x).normalize();s.vel.copy(tangent).multiplyScalar(rnd(2.1,3)).addScaledVector(randomUnit(),.25)}}
 const avgPos=new THREE.Vector3(),avgVel=new THREE.Vector3(),coh=new THREE.Vector3(),ali=new THREE.Vector3(),sep=new THREE.Vector3(),delta=new THREE.Vector3()
@@ -62,8 +64,6 @@ function reposStep(dt,blend){
   for(const s of state)s.pos.addScaledVector(s.vel,dt)
 }
 
-// Chaque cycle part de REPOS (ECART 28), s'ouvre, reste 3 s à 40,
-// revient complètement à REPOS puis y reste 3 s avant le cycle suivant.
 function breathingEcart(t){
   if(t<BREATH_START)return 28
   const elapsed=t-BREATH_START,total=BREATH_CYCLES*BREATH_PERIOD
@@ -82,11 +82,9 @@ function animate(){
   if(t<NORMAL_HOLD)return
   if(!captured){captured=true;capture()}
 
-  // 1. Passage réel vers REPOS : la simulation collective continue seule jusqu'à stabilisation.
   if(t<BREATH_START){
     if(controls)controls.ECART=28
-    const k=smooth((t-NORMAL_HOLD)/RELEASE)
-    reposStep(dt,k)
+    const k=smooth((t-NORMAL_HOLD)/RELEASE);reposStep(dt,k)
     for(const s of state){if(k<1)s.o.position.copy(s.start).lerp(s.pos,k);else s.o.position.copy(s.pos)}
     return
   }
@@ -96,7 +94,6 @@ function animate(){
     if(controls)controls.ECART=breathingEcart(t)
     for(let i=0;i<200;i++){const s=state[i];s.pos.copy(s.o.position);if(s.vel.lengthSq()<.001)s.vel.copy(randomUnit()).multiplyScalar(2.5)}
     const targetScale=(controls?.ECART||28)/28
-    avgPos.set(0,0,0);for(let i=200;i<300;i++)avgPos.add(state[i].pos);avgPos.multiplyScalar(1/100)
     for(let i=200;i<300;i++){
       const s=state[i],baseDir=s.start.clone().normalize(),target=baseDir.multiplyScalar(s.start.length()*targetScale),accel=target.sub(s.pos).multiplyScalar(2.1)
       s.vel.addScaledVector(accel,dt);s.vel.multiplyScalar(Math.pow(.90,dt*60));s.pos.addScaledVector(s.vel,dt);s.o.position.copy(s.pos)
@@ -105,11 +102,21 @@ function animate(){
   }
 
   if(controls)controls.ECART=28
-  reposStep(dt,1)
-  for(const s of state)s.o.position.copy(s.pos)
+  const finalHoldEnd=breathEnd+FINAL_REPOS_HOLD
+  if(t<finalHoldEnd){
+    reposStep(dt,1)
+    for(const s of state)s.o.position.copy(s.pos)
+    return
+  }
+
+  // Après 6 s sur le dernier REPOS, retour progressif à la forme d'Entity de départ.
+  if(!returnCaptured){returnCaptured=true;for(const s of state)s.returnFrom.copy(s.o.position)}
+  const r=smooth((t-finalHoldEnd)/RETURN_TIME)
+  for(const s of state)s.o.position.copy(s.returnFrom).lerp(s.start,r)
+  if(r>=1){for(const s of state){s.pos.copy(s.start);s.vel.set(0,0,0)}}
 }
 animate()
 
 const label=[...document.querySelectorAll('div')].find(el=>el.textContent?.startsWith('ENTITY — Première connexion'))
-if(label)label.textContent='ENTITY — REPOS · passage complet puis 4 respirations · pauses 3 s large / 3 s REPOS'
-const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / SÉQUENCE COMPLÈTE'
+if(label)label.textContent='ENTITY — REPOS · pauses 6 s · dernier REPOS 6 s · retour Entity'
+const title=document.querySelector('.lil-gui.root > .title');if(title)title.textContent='ENTITY — TEST REPOS / RETOUR COMPLET'
