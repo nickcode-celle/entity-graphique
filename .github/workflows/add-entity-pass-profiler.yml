@@ -1,4 +1,4 @@
-name: Optimize exact ENTITY relief meshes
+name: Optimize ENTITY exact reliefs safely
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Merge exact pompon and needle relief geometry
+      - name: Merge exact pompon and needle geometry compatibly
         shell: bash
         run: |
           python3 - <<'PY'
@@ -32,17 +32,19 @@ jobs:
               raise SystemExit('STOP: import anchor unavailable or optimization already present')
           s=s.replace(old_import,new_import,1)
           old="const facetsGeometry=new THREE.IcosahedronGeometry(1.14,3),displacedGeometryCache=new Map()\nfunction makeFrozenTexture(kind,i){if(kind==='facets'){const m=personalityMaterial(i);m.flatShading=true;return new THREE.Mesh(facetsGeometry,m)}if(kind==='pompons'){const g=new THREE.Group();g.add(textureBase(i));for(let j=0;j<80;j++)ballOn(g,fibDir(j,80),i,.1+(j%3)*.018,1.04);return g}if(kind==='needles'){const g=new THREE.Group();g.add(textureBase(i));for(let j=0;j<120;j++)coneOn(g,fibDir(j,120),i,.43+(j%7)*.022,.023);return g}"
-          new="const facetsGeometry=new THREE.IcosahedronGeometry(1.14,3),displacedGeometryCache=new Map()\nfunction mergedPomponsGeometry(){const parts=[textureBaseGeometry.clone()];for(let j=0;j<80;j++){const d=fibDir(j,80),r=.1+(j%3)*.018,key=r.toFixed(6);let geometry=ballGeometryCache.get(key);if(!geometry){geometry=new THREE.IcosahedronGeometry(r,2);ballGeometryCache.set(key,geometry)}const c=geometry.clone();c.translate(d.x*1.04,d.y*1.04,d.z*1.04);parts.push(c)}return mergeGeometries(parts,false)}\nfunction mergedNeedlesGeometry(){const parts=[textureBaseGeometry.clone()],up=new THREE.Vector3(0,1,0),m=new THREE.Matrix4(),q=new THREE.Quaternion(),pos=new THREE.Vector3(),scale=new THREE.Vector3(1,1,1);for(let j=0;j<120;j++){const d=fibDir(j,120),len=.43+(j%7)*.022,r=.023,key=len.toFixed(6)+'/'+r.toFixed(6);let geometry=coneGeometryCache.get(key);if(!geometry){geometry=new THREE.ConeGeometry(r,len,8);coneGeometryCache.set(key,geometry)}q.setFromUnitVectors(up,d);pos.copy(d).multiplyScalar(1+len/2);m.compose(pos,q,scale);const c=geometry.clone();c.applyMatrix4(m);parts.push(c)}return mergeGeometries(parts,false)}\nconst pomponsMergedGeometry=mergedPomponsGeometry(),needlesMergedGeometry=mergedNeedlesGeometry()\nfunction makeFrozenTexture(kind,i){if(kind==='facets'){const m=personalityMaterial(i);m.flatShading=true;return new THREE.Mesh(facetsGeometry,m)}if(kind==='pompons')return new THREE.Mesh(pomponsMergedGeometry,personalityMaterial(i));if(kind==='needles')return new THREE.Mesh(needlesMergedGeometry,personalityMaterial(i));"
+          new="const facetsGeometry=new THREE.IcosahedronGeometry(1.14,3),displacedGeometryCache=new Map()\nfunction mergeCompatible(parts){const normalized=parts.map(src=>{const g=src.clone().toNonIndexed();for(const name of Object.keys(g.attributes)){if(name!=='position'&&name!=='normal'&&name!=='uv')g.deleteAttribute(name)}return g});return mergeGeometries(normalized,false)}\nfunction mergedPomponsGeometry(){const parts=[textureBaseGeometry];for(let j=0;j<80;j++){const d=fibDir(j,80),r=.1+(j%3)*.018,key=r.toFixed(6);let geometry=ballGeometryCache.get(key);if(!geometry){geometry=new THREE.IcosahedronGeometry(r,2);ballGeometryCache.set(key,geometry)}const c=geometry.clone();c.translate(d.x*1.04,d.y*1.04,d.z*1.04);parts.push(c)}return mergeCompatible(parts)}\nfunction mergedNeedlesGeometry(){const parts=[textureBaseGeometry],up=new THREE.Vector3(0,1,0),m=new THREE.Matrix4(),q=new THREE.Quaternion(),pos=new THREE.Vector3(),scale=new THREE.Vector3(1,1,1);for(let j=0;j<120;j++){const d=fibDir(j,120),len=.43+(j%7)*.022,r=.023,key=len.toFixed(6)+'/'+r.toFixed(6);let geometry=coneGeometryCache.get(key);if(!geometry){geometry=new THREE.ConeGeometry(r,len,8);coneGeometryCache.set(key,geometry)}q.setFromUnitVectors(up,d);pos.copy(d).multiplyScalar(1+len/2);m.compose(pos,q,scale);const c=geometry.clone();c.applyMatrix4(m);parts.push(c)}return mergeCompatible(parts)}\nconst pomponsMergedGeometry=mergedPomponsGeometry(),needlesMergedGeometry=mergedNeedlesGeometry()\nfunction makeFrozenTexture(kind,i){if(kind==='facets'){const m=personalityMaterial(i);m.flatShading=true;return new THREE.Mesh(facetsGeometry,m)}if(kind==='pompons')return new THREE.Mesh(pomponsMergedGeometry,personalityMaterial(i));if(kind==='needles')return new THREE.Mesh(needlesMergedGeometry,personalityMaterial(i));"
           if old not in s:
               raise SystemExit('STOP: relief anchor not found')
           s=s.replace(old,new,1)
           p.write_text(s)
           PY
+      - name: Build before commit
+        run: npm ci && npm run build
       - name: Commit optimization
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Merge exact pompon and needle relief meshes"
+          git commit -m "Merge exact relief geometry compatibly"
           git push origin HEAD:entity-double-helix-test-v1
