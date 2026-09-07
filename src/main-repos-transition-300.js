@@ -36,7 +36,8 @@ const KNOWLEDGE_LEVEL=.27,KNOWLEDGE_ON=2.5,KNOWLEDGE_OFF_MIN=5,KNOWLEDGE_OFF_MAX
 function bodyColor(o){let c=new THREE.Color(0xffffff),found=false;o.traverse(n=>{if(!found&&n.isMesh&&n.material?.color){c=n.material.color.clone();found=true}});return c}
 const knowledgeIds=Array.from({length:BIRDS},(_,i)=>i).sort(()=>Math.random()-.5).slice(0,Math.round(BIRDS*KNOWLEDGE_LEVEL))
 const knowledge=new Map();for(const i of knowledgeIds)knowledge.set(i,{on:Math.random()*KNOWLEDGE_ON,off:0,last:new THREE.Vector3(1e9,1e9,1e9),marks:[]})
-const ghostGeo=new THREE.SphereGeometry(AFTERIMAGE_SIZE*.32,10,8)
+// Taille restaurée à la valeur validée d'Entity : 9.4, sans réduction arbitraire.
+const ghostGeo=new THREE.SphereGeometry(AFTERIMAGE_SIZE,10,8)
 function emitGhost(i,k,now){const p=marbles[i].position;if(p.distanceTo(k.last)<AFTERIMAGE_SPACING)return;k.last.copy(p);const mat=new THREE.MeshBasicMaterial({color:bodyColor(marbles[i]),transparent:true,opacity:AFTERIMAGE_ALPHA,depthWrite:false,toneMapped:false});const mesh=new THREE.Mesh(ghostGeo,mat);mesh.position.copy(p);scene.add(mesh);k.marks.push({mesh,born:now})}
 function updateKnowledge(dt,now){for(const [i,k] of knowledge){if(k.on>0){k.on-=dt;emitGhost(i,k,now);if(k.on<=0)k.off=THREE.MathUtils.lerp(KNOWLEDGE_OFF_MIN,KNOWLEDGE_OFF_MAX,Math.random())}else{k.off-=dt;if(k.off<=0){k.on=KNOWLEDGE_ON;k.last.set(1e9,1e9,1e9)}}for(let j=k.marks.length-1;j>=0;j--){const g=k.marks[j],age=(now-g.born)/1000;if(age>=AFTERIMAGE_LIFE){scene.remove(g.mesh);g.mesh.material.dispose();k.marks.splice(j,1)}else g.mesh.material.opacity=AFTERIMAGE_ALPHA*(1-age/AFTERIMAGE_LIFE)}}}
 
