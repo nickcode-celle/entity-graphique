@@ -2,8 +2,10 @@ name: Add ENTITY profiler
 
 on:
   push:
-    branches: [entity-double-helix-test-v1]
-    paths: [.github/workflows/add-entity-profiler.yml]
+    branches:
+      - entity-double-helix-test-v1
+    paths:
+      - .github/workflows/add-entity-profiler.yml
 
 permissions:
   contents: write
@@ -22,37 +24,28 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('src/main-entity-50.js')
-          s=p.read_text()
-
-          anchor="const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5\n"
-          insert="""const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5
-const profiler={frame:0,knowledge:0,bloom:0,final:0,samples:0,last:performance.now()}
-const profilerLabel=document.createElement('div');Object.assign(profilerLabel.style,{position:'fixed',right:'14px',top:'12px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'8px 10px',font:'12px/1.45 monospace',whiteSpace:'pre',pointerEvents:'none'});document.body.appendChild(profilerLabel)
-function profilerTick(frameStart,knowledgeMs,bloomMs,finalMs){profiler.frame+=performance.now()-frameStart;profiler.knowledge+=knowledgeMs;profiler.bloom+=bloomMs;profiler.final+=finalMs;profiler.samples++;const now=performance.now();if(now-profiler.last>=1000){const n=profiler.samples||1,frame=profiler.frame/n,knowledge=profiler.knowledge/n,bloom=profiler.bloom/n,final=profiler.final/n;profilerLabel.textContent=`ENTITY PROFILER · ${BODY_COUNT} billes\nframe ${frame.toFixed(2)} ms · ${(1000/frame).toFixed(1)} fps\nknowledge ${knowledge.toFixed(2)} ms\nbloom ${bloom.toFixed(2)} ms\nfinal ${final.toFixed(2)} ms\nrender total ${(bloom+final).toFixed(2)} ms\ndraw calls ${renderer.info.render.calls} · tris ${renderer.info.render.triangles}`;profiler.frame=profiler.knowledge=profiler.bloom=profiler.final=profiler.samples=0;profiler.last=now}}
-"""
+          p = Path('src/main-entity-50.js')
+          s = p.read_text()
+          anchor = "const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5\n"
+          profiler = "const profiler={frame:0,knowledge:0,bloom:0,final:0,samples:0,last:performance.now()};const profilerLabel=document.createElement('div');Object.assign(profilerLabel.style,{position:'fixed',right:'14px',top:'12px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'8px 10px',font:'12px/1.45 monospace',whiteSpace:'pre',pointerEvents:'none'});document.body.appendChild(profilerLabel);function profilerTick(frameStart,knowledgeMs,bloomMs,finalMs){profiler.frame+=performance.now()-frameStart;profiler.knowledge+=knowledgeMs;profiler.bloom+=bloomMs;profiler.final+=finalMs;profiler.samples++;const now=performance.now();if(now-profiler.last>=1000){const n=profiler.samples||1,frame=profiler.frame/n,knowledge=profiler.knowledge/n,bloom=profiler.bloom/n,final=profiler.final/n;profilerLabel.textContent='ENTITY PROFILER · '+BODY_COUNT+' billes\\nframe '+frame.toFixed(2)+' ms · '+(1000/frame).toFixed(1)+' fps\\nknowledge '+knowledge.toFixed(2)+' ms\\nbloom '+bloom.toFixed(2)+' ms\\nfinal '+final.toFixed(2)+' ms\\nrender total '+(bloom+final).toFixed(2)+' ms\\ndraw calls '+renderer.info.render.calls+' · tris '+renderer.info.render.triangles;profiler.frame=profiler.knowledge=profiler.bloom=profiler.final=profiler.samples=0;profiler.last=now}}\n"
           if anchor not in s:
               raise SystemExit('STOP: profiler anchor not found')
-          s=s.replace(anchor,insert,1)
-
-          old="function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;"
-          new="function animate(){requestAnimationFrame(animate);const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;"
+          s = s.replace(anchor, anchor + profiler, 1)
+          old = "function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;"
+          new = "function animate(){requestAnimationFrame(animate);const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;"
           if old not in s:
               raise SystemExit('STOP: animate start not found')
-          s=s.replace(old,new,1)
-
-          old="entityGroup.updateMatrixWorld(true);updateKnowledgeTrails(dt);for(let i=0;i<SATELLITE_COUNT;i++)"
-          new="entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++)"
+          s = s.replace(old, new, 1)
+          old = "entityGroup.updateMatrixWorld(true);updateKnowledgeTrails(dt);for(let i=0;i<SATELLITE_COUNT;i++)"
+          new = "entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++)"
           if old not in s:
               raise SystemExit('STOP: knowledge hook not found')
-          s=s.replace(old,new,1)
-
-          old="camera.layers.set(bloomLayer);bloomComposer.render(dt);scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.render(dt);camera.layers.set(0)}animate()"
-          new="camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()"
+          s = s.replace(old, new, 1)
+          old = "camera.layers.set(bloomLayer);bloomComposer.render(dt);scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.render(dt);camera.layers.set(0)}animate()"
+          new = "camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()"
           if old not in s:
               raise SystemExit('STOP: render hook not found')
-          s=s.replace(old,new,1)
-
+          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
       - name: Commit
