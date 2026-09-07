@@ -1,4 +1,4 @@
-name: Batch ENTITY render objects
+name: Add ENTITY depth prepass
 
 on:
   push:
@@ -18,85 +18,38 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Batch render while preserving marble objects
+      - name: Add depth prepass without changing ENTITY appearance
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          if 'function syncMarbleRenderBatches()' in s:
-              raise SystemExit('STOP: render batching already present')
-          anchor="function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}\n"
-          if anchor not in s:
-              raise SystemExit('STOP: personality material anchor not found')
-          addition='''
-          let marbleRenderBatches=null
-          function initMarbleRenderBatches(){
-            const buckets=new Map(),records=[]
-            for(let i=0;i<marbles.length;i++){
-              const o=marbles[i]
-              if(!o?.isMesh||!o.geometry||!o.material||Array.isArray(o.material))throw new Error('ENTITY batching requires each marble root to remain one Mesh')
-              const attrs=Object.keys(o.geometry.attributes).sort().join(',')
-              const key=(o.geometry.index?'indexed':'nonindexed')+'|'+(o.material.flatShading?'flat':'smooth')+'|'+attrs
-              if(!buckets.has(key))buckets.set(key,[])
-              buckets.get(key).push({o,i})
-            }
-            for(const items of buckets.values()){
-              const geometries=[...new Set(items.map(x=>x.o.geometry))]
-              const maxVertices=geometries.reduce((n,g)=>n+g.attributes.position.count,0)
-              const maxIndices=geometries.reduce((n,g)=>n+(g.index?g.index.count:0),0)
-              const sourceMaterial=items[0].o.material
-              const material=sourceMaterial.clone()
-              material.color.set(0xffffff)
-              material.visible=true
-              allMarbleMaterials.push(material)
-              const batch=new THREE.BatchedMesh(items.length,maxVertices,Math.max(maxIndices,maxVertices*2),material)
-              batch.castShadow=true
-              batch.receiveShadow=true
-              batch.frustumCulled=false
-              batch.perObjectFrustumCulled=true
-              const geometryIds=new Map()
-              for(const g of geometries)geometryIds.set(g,batch.addGeometry(g))
-              entityGroup.add(batch)
-              for(const item of items){
-                const id=batch.addInstance(geometryIds.get(item.o.geometry))
-                batch.setColorAt(id,item.o.material.color)
-                item.o.userData.renderBatch=batch
-                item.o.userData.renderBatchId=id
-                item.o.userData.renderBatchColor=item.o.material.color.getHex()
-                item.o.material.visible=false
-                records.push(item.o)
-              }
-            }
-            marbleRenderBatches=records
-          }
-          function syncMarbleRenderBatches(){
-            if(!marbleRenderBatches)initMarbleRenderBatches()
-            for(const o of marbleRenderBatches){
-              o.updateMatrix()
-              const batch=o.userData.renderBatch,id=o.userData.renderBatchId
-              batch.setMatrixAt(id,o.matrix)
-              batch.setVisibleAt(id,o.visible)
-              const hex=o.material.color.getHex()
-              if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}
-            }
-          }
-          '''
-          s=s.replace(anchor,anchor+addition,1)
-          render_anchor='scene.background=bloomBackground;camera.layers.set(bloomLayer);'
+          if 'function renderEntityDepthPrepass()' in s:
+              raise SystemExit('STOP: depth prepass already present')
+          batch_anchor='''    batch.castShadow=true\n    batch.receiveShadow=true\n    batch.frustumCulled=false\n    batch.perObjectFrustumCulled=true\n'''
+          if batch_anchor not in s:
+              raise SystemExit('STOP: batch anchor not found')
+          s=s.replace(batch_anchor,batch_anchor+'    batch.layers.enable(2)\n',1)
+          sync_anchor='''function syncMarbleRenderBatches(){\n  if(!marbleRenderBatches)initMarbleRenderBatches()\n  for(const o of marbleRenderBatches){\n    o.updateMatrix()\n    const batch=o.userData.renderBatch,id=o.userData.renderBatchId\n    batch.setMatrixAt(id,o.matrix)\n    batch.setVisibleAt(id,o.visible)\n    const hex=o.material.color.getHex()\n    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}\n  }\n}\n'''
+          if sync_anchor not in s:
+              raise SystemExit('STOP: sync anchor not found')
+          addition='''\nconst depthPrepassMaterial=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true})\nconst depthClearColor=new THREE.Color()\nfunction renderEntityDepthPrepass(){\n  const previousOverride=scene.overrideMaterial\n  const previousAutoUpdate=renderer.shadowMap.autoUpdate\n  const previousClearAlpha=renderer.getClearAlpha()\n  renderer.getClearColor(depthClearColor)\n  const savedClearColor=depthClearColor.clone()\n  if(scene.background&&scene.background.isColor)renderer.setClearColor(scene.background,1)\n  else renderer.setClearColor(0x000000,0)\n  renderer.setRenderTarget(finalComposer.readBuffer)\n  renderer.clear(true,true,true)\n  renderer.shadowMap.autoUpdate=false\n  scene.overrideMaterial=depthPrepassMaterial\n  camera.layers.set(2)\n  renderer.render(scene,camera)\n  scene.overrideMaterial=previousOverride\n  renderer.shadowMap.autoUpdate=previousAutoUpdate\n  renderer.setClearColor(savedClearColor,previousClearAlpha)\n}\n'''
+          s=s.replace(sync_anchor,sync_anchor+addition,1)
+          render_anchor="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);"
           if render_anchor not in s:
               raise SystemExit('STOP: final render anchor not found')
-          s=s.replace(render_anchor,'syncMarbleRenderBatches();'+render_anchor,1)
+          replacement="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;renderEntityDepthPrepass();camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.passes[0].clear=false;const finalStart=performance.now();finalComposer.render(dt);finalComposer.passes[0].clear=true;"
+          s=s.replace(render_anchor,replacement,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit batching
+      - name: Commit depth prepass
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Batch ENTITY rendering while preserving marble objects"
+          git commit -m "Add exact ENTITY depth prepass"
           git push origin HEAD:entity-double-helix-test-v1
