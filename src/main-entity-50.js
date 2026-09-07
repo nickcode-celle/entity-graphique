@@ -96,6 +96,58 @@ function personalityColor(i){const p=personality[assignments[i]],v=new THREE.Col
 const allMarbleMaterials=[],personalityMaterialCache=new Map()
 function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}
 
+let marbleRenderBatches=null
+function initMarbleRenderBatches(){
+  const buckets=new Map(),records=[]
+  for(let i=0;i<marbles.length;i++){
+    const o=marbles[i]
+    if(!o?.isMesh||!o.geometry||!o.material||Array.isArray(o.material))throw new Error('ENTITY batching requires each marble root to remain one Mesh')
+    const attrs=Object.keys(o.geometry.attributes).sort().join(',')
+    const key=(o.geometry.index?'indexed':'nonindexed')+'|'+(o.material.flatShading?'flat':'smooth')+'|'+attrs
+    if(!buckets.has(key))buckets.set(key,[])
+    buckets.get(key).push({o,i})
+  }
+  for(const items of buckets.values()){
+    const geometries=[...new Set(items.map(x=>x.o.geometry))]
+    const maxVertices=geometries.reduce((n,g)=>n+g.attributes.position.count,0)
+    const maxIndices=geometries.reduce((n,g)=>n+(g.index?g.index.count:0),0)
+    const sourceMaterial=items[0].o.material
+    const material=sourceMaterial.clone()
+    material.color.set(0xffffff)
+    material.visible=true
+    allMarbleMaterials.push(material)
+    const batch=new THREE.BatchedMesh(items.length,maxVertices,Math.max(maxIndices,maxVertices*2),material)
+    batch.castShadow=true
+    batch.receiveShadow=true
+    batch.frustumCulled=false
+    batch.perObjectFrustumCulled=true
+    const geometryIds=new Map()
+    for(const g of geometries)geometryIds.set(g,batch.addGeometry(g))
+    entityGroup.add(batch)
+    for(const item of items){
+      const id=batch.addInstance(geometryIds.get(item.o.geometry))
+      batch.setColorAt(id,item.o.material.color)
+      item.o.userData.renderBatch=batch
+      item.o.userData.renderBatchId=id
+      item.o.userData.renderBatchColor=item.o.material.color.getHex()
+      item.o.material.visible=false
+      records.push(item.o)
+    }
+  }
+  marbleRenderBatches=records
+}
+function syncMarbleRenderBatches(){
+  if(!marbleRenderBatches)initMarbleRenderBatches()
+  for(const o of marbleRenderBatches){
+    o.updateMatrix()
+    const batch=o.userData.renderBatch,id=o.userData.renderBatchId
+    batch.setMatrixAt(id,o.matrix)
+    batch.setVisibleAt(id,o.visible)
+    const hex=o.material.color.getHex()
+    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}
+  }
+}
+
 const fract=x=>x-Math.floor(x),hash=(x,y,z)=>fract(Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453)
 function noise(x,y,z){const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),fx=x-X,fy=y-Y,fz=z-Z,s=t=>t*t*(3-2*t),sx=s(fx),sy=s(fy),sz=s(fz),h=(a,b,c)=>hash(X+a,Y+b,Z+c),a=THREE.MathUtils.lerp(h(0,0,0),h(1,0,0),sx),b=THREE.MathUtils.lerp(h(0,1,0),h(1,1,0),sx),c=THREE.MathUtils.lerp(h(0,0,1),h(1,0,1),sx),d=THREE.MathUtils.lerp(h(0,1,1),h(1,1,1),sx);return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a,b,sy),THREE.MathUtils.lerp(c,d,sy),sz)*2-1}
 function fbm(x,y,z,o=4){let v=0,a=.5,f=1;for(let i=0;i<o;i++){v+=a*noise(x*f,y*f,z*f);a*=.5;f*=2.03}return v}
@@ -173,5 +225,5 @@ const label=document.createElement('div');label.textContent='ENTITY — 50 % sur
 
 const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5
 const profiler={frame:0,knowledge:0,bloom:0,final:0,samples:0,last:performance.now()};const profilerLabel=document.createElement('div');Object.assign(profilerLabel.style,{position:'fixed',right:'14px',top:'12px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'8px 10px',font:'12px/1.45 monospace',whiteSpace:'pre',pointerEvents:'none'});document.body.appendChild(profilerLabel);function profilerTick(frameStart,knowledgeMs,bloomMs,finalMs){profiler.frame+=performance.now()-frameStart;profiler.knowledge+=knowledgeMs;profiler.bloom+=bloomMs;profiler.final+=finalMs;profiler.samples++;const now=performance.now();if(now-profiler.last>=1000){const n=profiler.samples||1,frame=profiler.frame/n,knowledge=profiler.knowledge/n,bloom=profiler.bloom/n,final=profiler.final/n;profilerLabel.textContent='ENTITY PROFILER · '+BODY_COUNT+' billes\nframe '+frame.toFixed(2)+' ms · '+(1000/frame).toFixed(1)+' fps\nknowledge '+knowledge.toFixed(2)+' ms\nbloom '+bloom.toFixed(2)+' ms\nfinal '+final.toFixed(2)+' ms\nrender total '+(bloom+final).toFixed(2)+' ms\ndraw calls '+renderer.info.render.calls+' · tris '+renderer.info.render.triangles;profiler.frame=profiler.knowledge=profiler.bloom=profiler.final=profiler.samples=0;profiler.last=now}}
-function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
+function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}syncMarbleRenderBatches();scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);bloomComposer.setSize(innerWidth,innerHeight);finalComposer.setSize(innerWidth,innerHeight)})
