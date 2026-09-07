@@ -46,7 +46,7 @@ function forceExactMean(v,t){const r=v.slice(),d=t*r.length;for(let p=0;p<30;p++
 function buildLevels(dom,a){const l=new Array(BODY_COUNT);for(let p=0;p<dom.length;p++){const ids=a.map((x,i)=>x===p?i:-1).filter(i=>i>=0),v=forceExactMean(ids.map(()=>randomEncadredValue(dom[p].level)),dom[p].level);ids.forEach((id,k)=>l[id]=v[k])}return l}
 function fibonacciShell(count,radius,phase,rotation){const pts=[],q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase,p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
 function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));return p}
-function makeCubeCenters(){const pts=[];for(let z=0;z<6;z++)for(let y=0;y<6;y++)for(let x=0;x<6;x++){const p=new THREE.Vector3((x-2.5)*1.1,(y-2.5)*1.1,(z-2.5)*1.1);pts.push(p)}pts.sort((a,b)=>b.lengthSq()-a.lengthSq());return pts.slice(0,BODY_COUNT)}
+function makeTorusCenters(){const pts=[],major=1.95,minor=.72,majorSteps=20,minorSteps=10;for(let u=0;u<majorSteps;u++)for(let v=0;v<minorSteps;v++){const a=u/majorSteps*Math.PI*2,b=v/minorSteps*Math.PI*2+(u%2)*Math.PI/minorSteps,r=major+minor*Math.cos(b);pts.push(new THREE.Vector3(r*Math.cos(a),minor*Math.sin(b),r*Math.sin(a)))}return pts}
 
 const personality=personalityColors.map(color=>({color,level:50}))
 const assignments=shuffledAssignments(BODY_COUNT,10)
@@ -77,9 +77,9 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),cubeCenters=makeCubeCenters(),centers=sphereCenters.map(p=>p.clone())
-const CUBE_MORPH_START=1,CUBE_MORPH_DURATION=3
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-CUBE_MORPH_START)/CUBE_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],cubeCenters[i],s);updateCells()}
+const sphereCenters=makeBodyCenters(),torusCenters=makeTorusCenters(),centers=sphereCenters.map(p=>p.clone())
+const TORUS_MORPH_START=1,TORUS_MORPH_DURATION=3
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-TORUS_MORPH_START)/TORUS_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],torusCenters[i],s);updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
