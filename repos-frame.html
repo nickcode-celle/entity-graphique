@@ -8,20 +8,6 @@
 </head>
 <body>
   <div id="app"></div>
-  <script type="module" src="/src/main-repos-transition-300.js"></script>
-  <script>
-    function forceValidatedRepos(){
-      const rows=[...document.querySelectorAll('.controller')]
-      const row=rows.find(r=>r.querySelector('.name')?.textContent.trim()==='SEPARATION')
-      const input=row?.querySelector('input')
-      if(!input)return false
-      input.value='40'
-      input.dispatchEvent(new Event('input',{bubbles:true}))
-      input.dispatchEvent(new Event('change',{bubbles:true}))
-      return true
-    }
-    let tries=0
-    const timer=setInterval(()=>{tries++;if(forceValidatedRepos()||tries>80)clearInterval(timer)},50)
-  </script>
+  <script type="module" src="/src/repos-transition-bootstrap.js"></script>
 </body>
 </html>
