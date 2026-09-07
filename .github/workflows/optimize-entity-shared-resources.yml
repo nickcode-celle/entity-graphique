@@ -1,0 +1,58 @@
+name: Optimize ENTITY shared resources
+
+on:
+  push:
+    branches:
+      - entity-double-helix-test-v1
+    paths:
+      - .github/workflows/optimize-entity-shared-resources.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-double-helix-test-v1
+          fetch-depth: 0
+      - name: Share identical geometries and per-bead materials
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old="const allMarbleMaterials=[]\nfunction personalityMaterial(i){const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);return m}"
+          new="const allMarbleMaterials=[],personalityMaterialCache=new Map()\nfunction personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}"
+          if old not in s: raise SystemExit('STOP: material anchor not found')
+          s=s.replace(old,new,1)
+          old="function textureBase(i){return new THREE.Mesh(new THREE.SphereGeometry(1,64,48),personalityMaterial(i))}\nfunction ballOn(g,d,i,r=.1,dist=1.04){const m=new THREE.Mesh(new THREE.IcosahedronGeometry(r,2),personalityMaterial(i));m.position.copy(d).multiplyScalar(dist);g.add(m)}\nfunction coneOn(g,d,i,len=.42,r=.025){const m=new THREE.Mesh(new THREE.ConeGeometry(r,len,8),personalityMaterial(i));m.position.copy(d).multiplyScalar(1+len/2);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d);g.add(m)}"
+          new="const textureBaseGeometry=new THREE.SphereGeometry(1,64,48),ballGeometryCache=new Map(),coneGeometryCache=new Map()\nfunction textureBase(i){return new THREE.Mesh(textureBaseGeometry,personalityMaterial(i))}\nfunction ballOn(g,d,i,r=.1,dist=1.04){const key=r.toFixed(6);let geometry=ballGeometryCache.get(key);if(!geometry){geometry=new THREE.IcosahedronGeometry(r,2);ballGeometryCache.set(key,geometry)}const m=new THREE.Mesh(geometry,personalityMaterial(i));m.position.copy(d).multiplyScalar(dist);g.add(m)}\nfunction coneOn(g,d,i,len=.42,r=.025){const key=len.toFixed(6)+'/'+r.toFixed(6);let geometry=coneGeometryCache.get(key);if(!geometry){geometry=new THREE.ConeGeometry(r,len,8);coneGeometryCache.set(key,geometry)}const m=new THREE.Mesh(geometry,personalityMaterial(i));m.position.copy(d).multiplyScalar(1+len/2);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d);g.add(m)}"
+          if old not in s: raise SystemExit('STOP: relief helper anchor not found')
+          s=s.replace(old,new,1)
+          old="function makeFrozenTexture(kind,i){if(kind==='facets'){const m=personalityMaterial(i);m.flatShading=true;return new THREE.Mesh(new THREE.IcosahedronGeometry(1.14,3),m)}"
+          new="const facetsGeometry=new THREE.IcosahedronGeometry(1.14,3),displacedGeometryCache=new Map()\nfunction makeFrozenTexture(kind,i){if(kind==='facets'){const m=personalityMaterial(i);m.flatShading=true;return new THREE.Mesh(facetsGeometry,m)}"
+          if old not in s: raise SystemExit('STOP: frozen texture anchor not found')
+          s=s.replace(old,new,1)
+          old="const g=displaced(n=>{const u=(Math.atan2(n.z,n.x)+Math.PI)/(2*Math.PI),v=Math.acos(n.y)/Math.PI;"
+          new="let g=displacedGeometryCache.get(kind);if(!g){g=displaced(n=>{const u=(Math.atan2(n.z,n.x)+Math.PI)/(2*Math.PI),v=Math.acos(n.y)/Math.PI;"
+          if old not in s: raise SystemExit('STOP: displaced start anchor not found')
+          s=s.replace(old,new,1)
+          old="const a=fbm(n.x*4.8,n.y*4.8,n.z*4.8,3),b=vor(n.x,n.y,n.z,5)[0];return .04*Math.sin((a*2.2+b*3.2)*Math.PI*2)});return new THREE.Mesh(g,personalityMaterial(i))}"
+          new="const a=fbm(n.x*4.8,n.y*4.8,n.z*4.8,3),b=vor(n.x,n.y,n.z,5)[0];return .04*Math.sin((a*2.2+b*3.2)*Math.PI*2)});displacedGeometryCache.set(kind,g)}return new THREE.Mesh(g,personalityMaterial(i))}"
+          if old not in s: raise SystemExit('STOP: displaced end anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Share identical ENTITY relief resources"
+          git push origin HEAD:entity-double-helix-test-v1
