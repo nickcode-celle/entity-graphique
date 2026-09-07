@@ -1,7 +1,8 @@
 let BIRDS=0
 let positions=null,velocities=null,nextVel=null
 let controls=null
-let running=false,last=0
+let running=false,last=0,lastSnapshot=0
+const SNAPSHOT_MS=1000/60
 
 function stepDonut(dt){
   const d=dt*controls.VITESSE
@@ -56,8 +57,12 @@ function loop(){
   const computeStart=performance.now()
   stepDonut(dt)
   const computeMs=performance.now()-computeStart
-  const snapshot=new Float64Array(positions)
-  postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:dt*1000,computeMs},[snapshot.buffer])
+  const afterCompute=performance.now()
+  if(afterCompute-lastSnapshot>=SNAPSHOT_MS){
+    const snapshot=new Float64Array(positions)
+    postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:afterCompute-lastSnapshot||SNAPSHOT_MS,computeMs},[snapshot.buffer])
+    lastSnapshot=afterCompute
+  }
   setTimeout(loop,0)
 }
 
@@ -70,6 +75,7 @@ onmessage=e=>{
     velocities=new Float64Array(data.velocities)
     nextVel=new Float64Array(BIRDS*3)
     last=performance.now()
+    lastSnapshot=last
     running=true
     loop()
   }else if(data.type==='controls'&&controls){
