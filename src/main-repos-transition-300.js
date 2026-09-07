@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import GUI from 'lil-gui'
 
-// DONUT validé restauré : même moteur CPU, mêmes 500 billes, mêmes curseurs 30 / 8 / 60.
-// Retour exact avant la tentative de voisinage optimisé. Traînées toujours coupées pour isoler le moteur.
+// DONUT validé : mêmes 500 billes, mêmes curseurs 30 / 8 / 60.
+// Test fluidité : mêmes équations et mêmes 500x500 interactions, mais calcul numérique sans Vector3 dans la boucle chaude.
 const DONUT_ELIGIBILITY={beads:500,reposAcquired:true,emotionalTrigger:'JOIE',domains:{PERSONNALITE:61,RELATION:62,GOUTS:63,OPINIONS_VALEURS:61,CONNAISSANCES:62,MONDE_PROPRE:52,HISTOIRE_VECUE:48,CAPACITES:44}}
 const captured=[];let entityGroup=null
 const originalAdd=THREE.Object3D.prototype.add
@@ -21,13 +21,35 @@ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(
 const scene=new THREE.Scene();scene.background=entityScene?.background?.clone?.()||new THREE.Color(0x1d1f22)
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000);camera.position.set(0,0,controls.CAMERA);camera.lookAt(0,0,0)
 if(entityScene)entityScene.traverse(o=>{if(!o.isLight)return;const l=o.clone();l.position.copy(o.position);l.quaternion.copy(o.quaternion);l.scale.copy(o.scale);l.castShadow=o.castShadow;if(l.shadow&&o.shadow){l.shadow.mapSize.copy(o.shadow.mapSize);l.shadow.camera.near=o.shadow.camera.near;l.shadow.camera.far=o.shadow.camera.far;l.shadow.bias=o.shadow.bias;l.shadow.normalBias=o.shadow.normalBias}scene.add(l)})
-const marbles=[],positions=[],velocities=[]
+const marbles=[]
+const positions=new Float64Array(BIRDS*3),velocities=new Float64Array(BIRDS*3),nextVel=new Float64Array(BIRDS*3)
 const startBounds=currentBounds(),startHalf=startBounds/2
-for(let i=0;i<BIRDS;i++){const c=cloneBody(captured[i%captured.length]);c.scale.multiplyScalar(controls.TAILLE/.90);scene.add(c);marbles.push(c);const p=new THREE.Vector3(Math.random()*startBounds-startHalf,Math.random()*startBounds-startHalf,Math.random()*startBounds-startHalf);const v=new THREE.Vector3((Math.random()-.5)*10,(Math.random()-.5)*10,(Math.random()-.5)*10);positions.push(p);velocities.push(v);c.position.copy(p)}
+for(let i=0;i<BIRDS;i++){const c=cloneBody(captured[i%captured.length]);c.scale.multiplyScalar(controls.TAILLE/.90);scene.add(c);marbles.push(c);const q=i*3,px=Math.random()*startBounds-startHalf,py=Math.random()*startBounds-startHalf,pz=Math.random()*startBounds-startHalf,vx=(Math.random()-.5)*10,vy=(Math.random()-.5)*10,vz=(Math.random()-.5)*10;positions[q]=px;positions[q+1]=py;positions[q+2]=pz;velocities[q]=vx;velocities[q+1]=vy;velocities[q+2]=vz;c.position.set(px,py,pz)}
 const gui=new GUI({title:'DONUT — TEST FLUIDITÉ'});gui.add(controls,'BOUNDS',.1,1,.01);gui.add(controls,'CENTRE',0,10,.1);gui.add(controls,'SEPARATION',0,100,1);gui.add(controls,'ALIGNEMENT',0,100,1);gui.add(controls,'COHESION',0,100,1);gui.add(controls,'CAMERA',200,1200,10).onChange(v=>{camera.position.z=v;camera.lookAt(0,0,0)});gui.add(controls,'TAILLE',.2,5,.1).onChange(v=>{const s=v/.90;for(const m of marbles)m.scale.setScalar(s)});gui.add(controls,'VITESSE',.05,2,.05)
-const status=document.createElement('div');status.textContent=`DONUT VALIDÉ — ${donutEligible?'ÉLIGIBLE':'NON ÉLIGIBLE'} · 500 billes · 30 / 8 / 60 · TEST SANS TRAÎNÉES`;Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
-const nextVel=Array.from({length:BIRDS},()=>new THREE.Vector3()),dir=new THREE.Vector3(),tmp=new THREE.Vector3();let last=performance.now();const startedAt=last
-function stepDonut(dt){const d=dt*controls.VITESSE,zone=controls.SEPARATION+controls.ALIGNEMENT+controls.COHESION,zone2=zone*zone,sepT=zone>0?controls.SEPARATION/zone:0,alignT=zone>0?(controls.SEPARATION+controls.ALIGNEMENT)/zone:0;for(let i=0;i<BIRDS;i++){const selfP=positions[i],selfV=velocities[i],v=nextVel[i].copy(selfV);dir.copy(selfP);dir.y*=2.5;if(dir.lengthSq()>1e-9)v.addScaledVector(dir.normalize(),-d*controls.CENTRE);if(zone>0)for(let j=0;j<BIRDS;j++){if(i===j)continue;dir.subVectors(positions[j],selfP);const dist2=dir.lengthSq();if(dist2<1e-8||dist2>zone2)continue;const percent=dist2/zone2;if(percent<sepT){const f=(sepT/percent-1)*d;v.addScaledVector(dir.normalize(),-f)}else if(percent<alignT){const td=alignT-sepT,ap=td===0?1:(percent-sepT)/td,f=(.5-Math.cos(ap*Math.PI*2)*.5+.5)*d;tmp.copy(velocities[j]);if(tmp.lengthSq()>1e-9)v.addScaledVector(tmp.normalize(),f)}else{const td=1-alignT,ap=td===0?1:(percent-alignT)/td,f=(.5-(Math.cos(ap*Math.PI*2)*-.5+.5))*d;v.addScaledVector(dir.normalize(),f)}}if(v.length()>9)v.setLength(9)}for(let i=0;i<BIRDS;i++){velocities[i].copy(nextVel[i]);positions[i].addScaledVector(velocities[i],d*15);marbles[i].position.copy(positions[i])}}
+const status=document.createElement('div');status.textContent=`DONUT VALIDÉ — ${donutEligible?'ÉLIGIBLE':'NON ÉLIGIBLE'} · 500 billes · 30 / 8 / 60 · CALCUL NUMÉRIQUE · SANS TRAÎNÉES`;Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
+let last=performance.now();const startedAt=last
+function stepDonut(dt){
+  const d=dt*controls.VITESSE,zone=controls.SEPARATION+controls.ALIGNEMENT+controls.COHESION,zone2=zone*zone,sepT=zone>0?controls.SEPARATION/zone:0,alignT=zone>0?(controls.SEPARATION+controls.ALIGNEMENT)/zone:0,centre=controls.CENTRE,twoPI=Math.PI*2
+  for(let i=0;i<BIRDS;i++){
+    const qi=i*3,spx=positions[qi],spy=positions[qi+1],spz=positions[qi+2]
+    let vx=velocities[qi],vy=velocities[qi+1],vz=velocities[qi+2]
+    let dx=spx,dy=spy*2.5,dz=spz,dist2=dx*dx+dy*dy+dz*dz
+    if(dist2>1e-9){const inv=1/Math.sqrt(dist2),f=-d*centre;vx+=dx*inv*f;vy+=dy*inv*f;vz+=dz*inv*f}
+    if(zone>0)for(let j=0;j<BIRDS;j++){
+      if(i===j)continue
+      const qj=j*3;dx=positions[qj]-spx;dy=positions[qj+1]-spy;dz=positions[qj+2]-spz;dist2=dx*dx+dy*dy+dz*dz
+      if(dist2<1e-8||dist2>zone2)continue
+      const percent=dist2/zone2,invDist=1/Math.sqrt(dist2)
+      if(percent<sepT){const f=(sepT/percent-1)*d;vx-=dx*invDist*f;vy-=dy*invDist*f;vz-=dz*invDist*f}
+      else if(percent<alignT){const td=alignT-sepT,ap=td===0?1:(percent-sepT)/td,f=(.5-Math.cos(ap*twoPI)*.5+.5)*d,bvx=velocities[qj],bvy=velocities[qj+1],bvz=velocities[qj+2],bl2=bvx*bvx+bvy*bvy+bvz*bvz;if(bl2>1e-9){const bi=1/Math.sqrt(bl2);vx+=bvx*bi*f;vy+=bvy*bi*f;vz+=bvz*bi*f}}
+      else{const td=1-alignT,ap=td===0?1:(percent-alignT)/td,f=(.5-(Math.cos(ap*twoPI)*-.5+.5))*d;vx+=dx*invDist*f;vy+=dy*invDist*f;vz+=dz*invDist*f}
+    }
+    const speed2=vx*vx+vy*vy+vz*vz;if(speed2>81){const k=9/Math.sqrt(speed2);vx*=k;vy*=k;vz*=k}
+    nextVel[qi]=vx;nextVel[qi+1]=vy;nextVel[qi+2]=vz
+  }
+  const move=d*15
+  for(let i=0;i<BIRDS;i++){const q=i*3,vx=nextVel[q],vy=nextVel[q+1],vz=nextVel[q+2];velocities[q]=vx;velocities[q+1]=vy;velocities[q+2]=vz;const px=positions[q]+=vx*move,py=positions[q+1]+=vy*move,pz=positions[q+2]+=vz*move;marbles[i].position.set(px,py,pz)}
+}
 function updateCamera(now){const elapsed=(now-startedAt)/1000;if(elapsed<=60)return;const t=Math.min(1,(elapsed-60)/12),e=t*t*(3-2*t);camera.position.y=180*e;camera.position.z=controls.CAMERA;camera.lookAt(0,0,0)}
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
 function animate(){requestAnimationFrame(animate);const now=performance.now();let dt=(now-last)/1000;if(dt>1)dt=1;last=now;if(donutEligible)stepDonut(dt);updateCamera(now);renderer.render(scene,camera)}animate()
