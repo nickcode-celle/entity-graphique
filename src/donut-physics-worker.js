@@ -2,7 +2,7 @@ let BIRDS=0
 let positions=null,velocities=null,nextVel=null
 let controls=null
 let running=false,last=0,lastSnapshot=0
-const SNAPSHOT_MS=1000/60
+const STEP_MS=1000/60
 
 function stepDonut(dt){
   const d=dt*controls.VITESSE
@@ -49,21 +49,20 @@ function stepDonut(dt){
 
 function loop(){
   if(!running)return
-  const now=performance.now()
-  let dt=(now-last)/1000
+  const tickStart=performance.now()
+  let dt=(tickStart-last)/1000
   if(dt>1)dt=1
   if(dt<1/240)dt=1/240
-  last=now
+  last=tickStart
   const computeStart=performance.now()
   stepDonut(dt)
   const computeMs=performance.now()-computeStart
-  const afterCompute=performance.now()
-  if(afterCompute-lastSnapshot>=SNAPSHOT_MS){
-    const snapshot=new Float64Array(positions)
-    postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:afterCompute-lastSnapshot||SNAPSHOT_MS,computeMs},[snapshot.buffer])
-    lastSnapshot=afterCompute
-  }
-  setTimeout(loop,0)
+  const snapshot=new Float64Array(positions)
+  const now=performance.now()
+  postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:now-lastSnapshot||STEP_MS,computeMs},[snapshot.buffer])
+  lastSnapshot=now
+  const spent=performance.now()-tickStart
+  setTimeout(loop,Math.max(0,STEP_MS-spent))
 }
 
 onmessage=e=>{
