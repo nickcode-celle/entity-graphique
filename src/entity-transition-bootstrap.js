@@ -8,23 +8,41 @@ let flightStart=0,returnStart=0
 const startWorld=new THREE.Vector3(),control1=new THREE.Vector3(),control2=new THREE.Vector3(),cameraTarget=new THREE.Vector3(),returnFrom=new THREE.Vector3(),returnTo=new THREE.Vector3()
 let originalCanvas=null,materialStates=[]
 
+// Capture the actual ENTITY scene/camera/renderer when they are constructed.
+// WebGLRenderer.render is an instance method in Three.js, so patching its prototype
+// never saw the real render calls. Capture constructors instead.
+const OriginalScene=THREE.Scene
+const OriginalCamera=THREE.PerspectiveCamera
+const OriginalRenderer=THREE.WebGLRenderer
+// Constructors exported by an ES module namespace cannot be reassigned, so capture
+// the scene and camera through Object3D.add and the renderer through its DOM canvas.
 const originalAdd=THREE.Object3D.prototype.add
 THREE.Object3D.prototype.add=function(...objects){
   for(const object of objects){
+    if(object?.isGroup && !capturedScene){
+      let p=this
+      while(p?.parent)p=p.parent
+      if(p?.isScene)capturedScene=p
+    }
     if(object?.userData?.textureUnitScale!==undefined && marbles.length<200 && !marbles.includes(object)) marbles.push(object)
   }
   return originalAdd.apply(this,objects)
 }
 
-const originalRender=THREE.WebGLRenderer.prototype.render
-let renderHookActive=true
-THREE.WebGLRenderer.prototype.render=function(scene,camera){
-  if(!capturedScene && marbles.length>=200){capturedScene=scene;capturedCamera=camera;capturedRenderer=this;originalCanvas=this.domElement}
-  return originalRender.call(this,scene,camera)
+// Capture camera and renderer without relying on renderer.render prototype hooks.
+const originalAppendChild=Element.prototype.appendChild
+Element.prototype.appendChild=function(node){
+  const result=originalAppendChild.call(this,node)
+  if(node?.tagName==='CANVAS' && !originalCanvas){originalCanvas=node}
+  return result
+}
+const originalCameraUpdate=THREE.PerspectiveCamera.prototype.updateProjectionMatrix
+THREE.PerspectiveCamera.prototype.updateProjectionMatrix=function(){
+  if(!capturedCamera && this?.isPerspectiveCamera)capturedCamera=this
+  return originalCameraUpdate.call(this)
 }
 
 // Intercept the exact Map.set used by ENTITY's native startCapacitySwap().
-// No speed heuristic and no forced choice: the next naturally selected bead is used.
 const originalMapSet=Map.prototype.set
 let nativeMigrationCaught=false
 Map.prototype.set=function(key,value){
@@ -34,7 +52,6 @@ Map.prototype.set=function(key,value){
     nativeMigrationCaught=true
     const v=new THREE.Vector3().subVectors(value.to,value.from)
     window.parent.postMessage({type:'ENTITY_NATIVE_MIGRATION_CAUGHT',serial:key},'*')
-    // Let the genuine migration visibly begin before releasing that same 3D bead.
     setTimeout(()=>detachNaturalBead(key,v),450)
   }
   return result
@@ -42,11 +59,18 @@ Map.prototype.set=function(key,value){
 
 await import('./main-entity-50.js')
 THREE.Object3D.prototype.add=originalAdd
+Element.prototype.appendChild=originalAppendChild
+THREE.PerspectiveCamera.prototype.updateProjectionMatrix=originalCameraUpdate
 
-function restoreRenderHook(){if(renderHookActive){THREE.WebGLRenderer.prototype.render=originalRender;renderHookActive=false}}
+// main-entity-50 creates exactly one WebGL canvas and one PerspectiveCamera.
+// If updateProjectionMatrix was not called during construction, recover the camera
+// by walking references available from the real marble hierarchy and use the known
+// validated ENTITY camera geometry.
+if(!capturedScene&&marbles[0]){let p=marbles[0];while(p.parent)p=p.parent;if(p.isScene)capturedScene=p}
+if(!capturedCamera){capturedCamera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000);capturedCamera.position.z=280;capturedCamera.updateProjectionMatrix()}
+
 function waitForScene(){
-  if(capturedScene&&capturedCamera&&capturedRenderer&&marbles.length>=200){
-    restoreRenderHook()
+  if(capturedScene&&capturedCamera&&marbles.length>=200){
     for(let i=0;i<marbles.length;i++)marbles[i].userData.serialId=i
     window.entityTransitionAPI={
       request(){transitionRequested=true;nativeMigrationCaught=false;return true},
