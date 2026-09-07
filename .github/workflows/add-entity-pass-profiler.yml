@@ -1,4 +1,4 @@
-name: Profile ENTITY final render load
+name: Batch ENTITY render objects
 
 on:
   push:
@@ -19,32 +19,85 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Add exact final-pass render counters
+      - name: Batch render while preserving marble objects
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          old="const passProfile={bloomRender:0,bloomEffect:0,finalRender:0,finalMix:0,finalOutput:0,samples:0,last:performance.now()};function measurePass(pass,key){const original=pass.render.bind(pass);pass.render=function(...args){const t=performance.now();const result=original(...args);passProfile[key]+=performance.now()-t;return result}}measurePass(bloomComposer.passes[0],'bloomRender');measurePass(bloomComposer.passes[1],'bloomEffect');measurePass(finalComposer.passes[0],'finalRender');"
-          new="const passProfile={bloomRender:0,bloomEffect:0,finalRender:0,finalMix:0,finalOutput:0,finalCalls:0,finalTriangles:0,samples:0,last:performance.now()};function measurePass(pass,key){const original=pass.render.bind(pass);pass.render=function(...args){const t=performance.now();const result=original(...args);passProfile[key]+=performance.now()-t;if(key==='finalRender'){passProfile.finalCalls+=renderer.info.render.calls;passProfile.finalTriangles+=renderer.info.render.triangles}return result}}measurePass(bloomComposer.passes[0],'bloomRender');measurePass(bloomComposer.passes[1],'bloomEffect');measurePass(finalComposer.passes[0],'finalRender');"
-          if old not in s or 'finalTriangles:0' in s:
-              raise SystemExit('STOP: profiler anchor unavailable or counters already present')
-          s=s.replace(old,new,1)
-          old2="+' ms\\nmix '+(passProfile.finalMix/n).toFixed(2)+' ms\\noutput '+(passProfile.finalOutput/n).toFixed(2)+' ms';passProfile.bloomRender=passProfile.bloomEffect=passProfile.finalRender=passProfile.finalMix=passProfile.finalOutput=0;passProfile.samples=0"
-          new2="+' ms\\nmix '+(passProfile.finalMix/n).toFixed(2)+' ms\\noutput '+(passProfile.finalOutput/n).toFixed(2)+' ms\\nfinal calls '+Math.round(passProfile.finalCalls/n)+'\\nfinal triangles '+Math.round(passProfile.finalTriangles/n).toLocaleString();passProfile.bloomRender=passProfile.bloomEffect=passProfile.finalRender=passProfile.finalMix=passProfile.finalOutput=passProfile.finalCalls=passProfile.finalTriangles=0;passProfile.samples=0"
-          if old2 not in s:
-              raise SystemExit('STOP: profiler label anchor not found')
-          s=s.replace(old2,new2,1)
+          if 'function syncMarbleRenderBatches()' in s:
+              raise SystemExit('STOP: render batching already present')
+          anchor="function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}\n"
+          if anchor not in s:
+              raise SystemExit('STOP: personality material anchor not found')
+          addition=r'''
+let marbleRenderBatches=null
+function initMarbleRenderBatches(){
+  const buckets=new Map(),records=[]
+  for(let i=0;i<marbles.length;i++){
+    const o=marbles[i]
+    if(!o?.isMesh||!o.geometry||!o.material||Array.isArray(o.material))throw new Error('ENTITY batching requires each marble root to remain one Mesh')
+    const attrs=Object.keys(o.geometry.attributes).sort().join(',')
+    const key=(o.geometry.index?'indexed':'nonindexed')+'|'+(o.material.flatShading?'flat':'smooth')+'|'+attrs
+    if(!buckets.has(key))buckets.set(key,[])
+    buckets.get(key).push({o,i})
+  }
+  for(const items of buckets.values()){
+    const geometries=[...new Set(items.map(x=>x.o.geometry))]
+    const maxVertices=geometries.reduce((n,g)=>n+g.attributes.position.count,0)
+    const maxIndices=geometries.reduce((n,g)=>n+(g.index?g.index.count:0),0)
+    const sourceMaterial=items[0].o.material
+    const material=sourceMaterial.clone()
+    material.color.set(0xffffff)
+    material.visible=true
+    allMarbleMaterials.push(material)
+    const batch=new THREE.BatchedMesh(items.length,maxVertices,Math.max(maxIndices,maxVertices*2),material)
+    batch.castShadow=true
+    batch.receiveShadow=true
+    batch.frustumCulled=false
+    batch.perObjectFrustumCulled=true
+    const geometryIds=new Map()
+    for(const g of geometries)geometryIds.set(g,batch.addGeometry(g))
+    entityGroup.add(batch)
+    for(const item of items){
+      const id=batch.addInstance(geometryIds.get(item.o.geometry))
+      batch.setColorAt(id,item.o.material.color)
+      item.o.userData.renderBatch=batch
+      item.o.userData.renderBatchId=id
+      item.o.userData.renderBatchColor=item.o.material.color.getHex()
+      item.o.material.visible=false
+      records.push(item.o)
+    }
+  }
+  marbleRenderBatches=records
+}
+function syncMarbleRenderBatches(){
+  if(!marbleRenderBatches)initMarbleRenderBatches()
+  for(const o of marbleRenderBatches){
+    o.updateMatrix()
+    const batch=o.userData.renderBatch,id=o.userData.renderBatchId
+    batch.setMatrixAt(id,o.matrix)
+    batch.setVisibleAt(id,o.visible)
+    const hex=o.material.color.getHex()
+    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}
+  }
+}
+'''
+          s=s.replace(anchor,anchor+addition,1)
+          render_anchor='scene.background=bloomBackground;\ncamera.layers.set(bloomLayer);'
+          if render_anchor not in s:
+              raise SystemExit('STOP: final render anchor not found')
+          s=s.replace(render_anchor,'syncMarbleRenderBatches();\n'+render_anchor,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit profiler
+      - name: Commit batching
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Measure exact final render calls and triangles"
+          git commit -m "Batch ENTITY rendering while preserving marble objects"
           git push origin HEAD:entity-double-helix-test-v1
