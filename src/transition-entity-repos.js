@@ -24,7 +24,7 @@ label.textContent='ENTITY → REPOS · diagnostic'
 Object.assign(label.style,{position:'fixed',left:'18px',top:'18px',zIndex:'10',font:'14px system-ui',color:'white',background:'rgba(0,0,0,.62)',padding:'8px 10px',borderRadius:'8px',pointerEvents:'none',whiteSpace:'pre-line'})
 document.body.appendChild(label)
 
-let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now(),blurStarted=false
+let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now(),blurStarted=false,revealStarted=false,blurTimer=null
 
 function requestEntityDeparture(){
   if(requested)return
@@ -34,32 +34,49 @@ function requestEntityDeparture(){
   api.request()
 }
 
-function revealReposThroughBeadBlur(){
+function beginBeadBlurBeforeCamera(){
   if(blurStarted)return
   blurStarted=true
-  repos.style.opacity='1'
-  entity.style.transformOrigin='50% 50%'
-  entity.style.willChange='filter,opacity,transform'
-  entity.style.transition='filter .55s ease, transform .55s ease, opacity 1.35s ease .32s'
-  requestAnimationFrame(()=>{
-    entity.style.filter='blur(34px)'
-    entity.style.transform='scale(1.08)'
-    requestAnimationFrame(()=>{entity.style.opacity='0'})
-  })
+  entity.style.willChange='filter'
+  entity.style.transition='filter .95s ease-in'
+  entity.style.filter='blur(30px)'
+}
+
+function revealBlurredRepos(){
+  if(revealStarted)return
+  revealStarted=true
+  if(blurTimer){clearTimeout(blurTimer);blurTimer=null}
+  if(!blurStarted)beginBeadBlurBeforeCamera()
+
+  repos.style.zIndex='3'
+  repos.style.willChange='filter,opacity'
+  repos.style.filter='blur(30px)'
+  repos.style.opacity='0'
+  repos.style.transition='filter 2.35s ease-out, opacity 1.65s ease-out'
+
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    repos.style.opacity='1'
+    repos.style.filter='blur(0px)'
+  }))
+
   setTimeout(()=>{
     entity.style.display='none'
-    repos.style.zIndex='3'
-  },1850)
+    repos.style.filter='none'
+    repos.style.opacity='1'
+  },2450)
 }
 
 addEventListener('message',e=>{
   if(e.source===entity.contentWindow){
     if(e.data?.type==='ENTITY_TRANSITION_READY')entityReady=true
     else if(e.data?.type==='ENTITY_NATIVE_MIGRATION_CAUGHT')currentSerial=e.data.serial
-    else if(e.data?.type==='ENTITY_TRANSITION_BEAD')currentSerial=e.data.serial
-    else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
+    else if(e.data?.type==='ENTITY_TRANSITION_BEAD'){
       currentSerial=e.data.serial
-      revealReposThroughBeadBlur()
+      if(blurTimer)clearTimeout(blurTimer)
+      blurTimer=setTimeout(beginBeadBlurBeforeCamera,2550)
+    }else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
+      currentSerial=e.data.serial
+      revealBlurredRepos()
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
