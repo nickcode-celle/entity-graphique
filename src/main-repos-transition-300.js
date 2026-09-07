@@ -2,166 +2,46 @@ import * as THREE from 'three'
 import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
 import GUI from 'lil-gui'
 
-// TEST ISOLÉ : REPOS historique avec 300 vraies billes visuelles d'Entity.
-// Pas de transition, pas de DONUT. On valide d'abord : moteur REPOS + billes Entity + éclairage Entity.
-const captured=[]
-let entityGroup=null
+// REPOS validé : moteur historique + vraies billes Entity + éclairage Entity + traînées Connaissances.
+const captured=[];let entityGroup=null
 const originalAdd=THREE.Object3D.prototype.add
-THREE.Object3D.prototype.add=function(...objects){
-  const r=originalAdd.apply(this,objects)
-  for(const o of objects){
-    if(o?.userData?.textureUnitScale&&captured.length<200){captured.push(o);entityGroup=this}
-  }
-  return r
-}
-await import('./main-first-connection-panel.js')
-THREE.Object3D.prototype.add=originalAdd
-
-// Racine de la scène Entity pour récupérer ses lumières exactes.
-let entityScene=entityGroup
-while(entityScene?.parent)entityScene=entityScene.parent
-
+THREE.Object3D.prototype.add=function(...objects){const r=originalAdd.apply(this,objects);for(const o of objects)if(o?.userData?.textureUnitScale&&captured.length<200){captured.push(o);entityGroup=this}return r}
+await import('./main-first-connection-panel.js');THREE.Object3D.prototype.add=originalAdd
+let entityScene=entityGroup;while(entityScene?.parent)entityScene=entityScene.parent
 function cloneMaterial(m){return m?.clone?m.clone():m}
-function cloneBody(src){
-  const c=src.clone(true)
-  c.traverse(n=>{
-    if(n.material)n.material=Array.isArray(n.material)?n.material.map(cloneMaterial):cloneMaterial(n.material)
-    if(n.isMesh){n.castShadow=true;n.receiveShadow=true}
-  })
-  return c
-}
-
+function cloneBody(src){const c=src.clone(true);c.traverse(n=>{if(n.material)n.material=Array.isArray(n.material)?n.material.map(cloneMaterial):cloneMaterial(n.material);if(n.isMesh){n.castShadow=true;n.receiveShadow=true}});return c}
 const marbles=[]
-for(let i=0;i<300;i++){
-  const src=captured[i%captured.length]
-  const c=cloneBody(src)
-  // Valeur historique TAILLE 2.2 appliquée relativement à la taille Entity validée .90.
-  c.scale.multiplyScalar(2.2/.90)
-  marbles.push(c)
-}
+for(let i=0;i<300;i++){const c=cloneBody(captured[i%captured.length]);c.scale.multiplyScalar(2.2/.90);marbles.push(c)}
 
-// --- REPOS historique exact ---
-const WIDTH=20,HEIGHT=15,BIRDS=300
-const REFERENCE_BIRDS=32*32
-const REFERENCE_BOUNDS=800
-const BOUNDS_FACTOR=.51
-const BASE_BOUNDS=REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)
-const BOUNDS=BASE_BOUNDS*BOUNDS_FACTOR
-const BOUNDS_HALF=BOUNDS/2
+const WIDTH=20,HEIGHT=15,BIRDS=300,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800,BOUNDS_FACTOR=.51
+const BASE_BOUNDS=REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS),BOUNDS=BASE_BOUNDS*BOUNDS_FACTOR,BOUNDS_HALF=BOUNDS/2
 const REPOS={CENTRE:4.9,SEPARATION:30,ALIGNEMENT:1,COHESION:60,VITESSE:.35,CAMERA:840,TAILLE:2.2}
-
-const app=document.querySelector('#app')
-app.innerHTML=''
-const renderer=new THREE.WebGLRenderer({antialias:true})
-renderer.setPixelRatio(Math.min(devicePixelRatio,2))
-renderer.setSize(innerWidth,innerHeight)
-renderer.shadowMap.enabled=true
-renderer.shadowMap.type=THREE.PCFSoftShadowMap
-renderer.toneMapping=THREE.ACESFilmicToneMapping
-app.appendChild(renderer.domElement)
-
-const scene=new THREE.Scene()
-scene.background=entityScene?.background?.clone?.()||new THREE.Color(0x1d1f22)
-const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000)
-camera.position.z=REPOS.CAMERA
-
-// On reprend les lumières de la scène Entity, sans en inventer d'autres.
-if(entityScene){
-  entityScene.traverse(o=>{
-    if(!o.isLight)return
-    const l=o.clone()
-    l.position.copy(o.position)
-    l.quaternion.copy(o.quaternion)
-    l.scale.copy(o.scale)
-    l.castShadow=o.castShadow
-    if(l.shadow&&o.shadow){
-      l.shadow.mapSize.copy(o.shadow.mapSize)
-      l.shadow.camera.near=o.shadow.camera.near
-      l.shadow.camera.far=o.shadow.camera.far
-      l.shadow.bias=o.shadow.bias
-      l.shadow.normalBias=o.shadow.normalBias
-    }
-    scene.add(l)
-  })
-}
+const app=document.querySelector('#app');app.innerHTML=''
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;app.appendChild(renderer.domElement)
+const scene=new THREE.Scene();scene.background=entityScene?.background?.clone?.()||new THREE.Color(0x1d1f22)
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000);camera.position.z=REPOS.CAMERA
+if(entityScene)entityScene.traverse(o=>{if(!o.isLight)return;const l=o.clone();l.position.copy(o.position);l.quaternion.copy(o.quaternion);l.scale.copy(o.scale);l.castShadow=o.castShadow;if(l.shadow&&o.shadow){l.shadow.mapSize.copy(o.shadow.mapSize);l.shadow.camera.near=o.shadow.camera.near;l.shadow.camera.far=o.shadow.camera.far;l.shadow.bias=o.shadow.bias;l.shadow.normalBias=o.shadow.normalBias}scene.add(l)})
 for(const m of marbles)scene.add(m)
 
-const positionShader=`
-uniform float time; uniform float delta;
-void main(){
- vec2 uv=gl_FragCoord.xy/resolution.xy; vec4 p=texture2D(texturePosition,uv); vec3 v=texture2D(textureVelocity,uv).xyz;
- float phase=mod((p.w+delta+length(v.xz)*delta*3.+max(v.y,0.0)*delta*6.),62.83);
- gl_FragColor=vec4(p.xyz+v*delta*15.,phase);
-}`
-const velocityShader=`
-uniform float time; uniform float testing; uniform float delta;
-uniform float separationDistance; uniform float alignmentDistance; uniform float cohesionDistance; uniform float freedomFactor; uniform float centralPull; uniform vec3 predator;
-const float width=resolution.x; const float height=resolution.y; const float PI=3.141592653589793; const float PI_2=PI*2.0;
-float zoneRadius=40.0; float zoneRadiusSquared=1600.0; float separationThresh=.45; float alignmentThresh=.65;
-const float UPPER_BOUNDS=BOUNDS; const float LOWER_BOUNDS=-UPPER_BOUNDS; const float SPEED_LIMIT=9.0;
-void main(){
- zoneRadius=separationDistance+alignmentDistance+cohesionDistance; separationThresh=separationDistance/zoneRadius; alignmentThresh=(separationDistance+alignmentDistance)/zoneRadius; zoneRadiusSquared=zoneRadius*zoneRadius;
- vec2 uv=gl_FragCoord.xy/resolution.xy; vec3 birdPosition,birdVelocity; vec3 selfPosition=texture2D(texturePosition,uv).xyz; vec3 selfVelocity=texture2D(textureVelocity,uv).xyz;
- float dist,distSquared,f,percent; vec3 dir; vec3 velocity=selfVelocity; float limit=SPEED_LIMIT;
- dir=predator*UPPER_BOUNDS-selfPosition; dir.z=0.; dist=length(dir); distSquared=dist*dist; float preyRadius=150.; float preyRadiusSq=preyRadius*preyRadius;
- if(dist<preyRadius){f=(distSquared/preyRadiusSq-1.0)*delta*100.; velocity+=normalize(dir)*f; limit+=5.;}
- dir=selfPosition; dist=length(dir); dir.y*=2.5; velocity-=normalize(dir)*delta*centralPull;
- for(float y=0.;y<height;y++) for(float x=0.;x<width;x++){
-   vec2 ref=vec2(x+.5,y+.5)/resolution.xy; birdPosition=texture2D(texturePosition,ref).xyz; dir=birdPosition-selfPosition; dist=length(dir); if(dist<.0001) continue;
-   distSquared=dist*dist; if(distSquared>zoneRadiusSquared) continue; percent=distSquared/zoneRadiusSquared;
-   if(percent<separationThresh){f=(separationThresh/percent-1.)*delta; velocity-=normalize(dir)*f;}
-   else if(percent<alignmentThresh){float td=alignmentThresh-separationThresh; float ap=(percent-separationThresh)/td; birdVelocity=texture2D(textureVelocity,ref).xyz; f=(.5-cos(ap*PI_2)*.5+.5)*delta; velocity+=normalize(birdVelocity)*f;}
-   else {float td=1.-alignmentThresh; float ap=td==0.?1.:(percent-alignmentThresh)/td; f=(.5-(cos(ap*PI_2)*-.5+.5))*delta; velocity+=normalize(dir)*f;}
- }
- if(length(velocity)>limit) velocity=normalize(velocity)*limit; gl_FragColor=vec4(velocity,1.);
-}`
+const positionShader=`uniform float time;uniform float delta;void main(){vec2 uv=gl_FragCoord.xy/resolution.xy;vec4 p=texture2D(texturePosition,uv);vec3 v=texture2D(textureVelocity,uv).xyz;float phase=mod((p.w+delta+length(v.xz)*delta*3.+max(v.y,0.0)*delta*6.),62.83);gl_FragColor=vec4(p.xyz+v*delta*15.,phase);}`
+const velocityShader=`uniform float time;uniform float testing;uniform float delta;uniform float separationDistance;uniform float alignmentDistance;uniform float cohesionDistance;uniform float freedomFactor;uniform float centralPull;uniform vec3 predator;const float width=resolution.x;const float height=resolution.y;const float PI=3.141592653589793;const float PI_2=PI*2.0;float zoneRadius=40.0;float zoneRadiusSquared=1600.0;float separationThresh=.45;float alignmentThresh=.65;const float UPPER_BOUNDS=BOUNDS;const float LOWER_BOUNDS=-UPPER_BOUNDS;const float SPEED_LIMIT=9.0;void main(){zoneRadius=separationDistance+alignmentDistance+cohesionDistance;separationThresh=separationDistance/zoneRadius;alignmentThresh=(separationDistance+alignmentDistance)/zoneRadius;zoneRadiusSquared=zoneRadius*zoneRadius;vec2 uv=gl_FragCoord.xy/resolution.xy;vec3 birdPosition,birdVelocity;vec3 selfPosition=texture2D(texturePosition,uv).xyz;vec3 selfVelocity=texture2D(textureVelocity,uv).xyz;float dist,distSquared,f,percent;vec3 dir;vec3 velocity=selfVelocity;float limit=SPEED_LIMIT;dir=predator*UPPER_BOUNDS-selfPosition;dir.z=0.;dist=length(dir);distSquared=dist*dist;float preyRadius=150.;float preyRadiusSq=preyRadius*preyRadius;if(dist<preyRadius){f=(distSquared/preyRadiusSq-1.0)*delta*100.;velocity+=normalize(dir)*f;limit+=5.;}dir=selfPosition;dist=length(dir);dir.y*=2.5;velocity-=normalize(dir)*delta*centralPull;for(float y=0.;y<height;y++)for(float x=0.;x<width;x++){vec2 ref=vec2(x+.5,y+.5)/resolution.xy;birdPosition=texture2D(texturePosition,ref).xyz;dir=birdPosition-selfPosition;dist=length(dir);if(dist<.0001)continue;distSquared=dist*dist;if(distSquared>zoneRadiusSquared)continue;percent=distSquared/zoneRadiusSquared;if(percent<separationThresh){f=(separationThresh/percent-1.)*delta;velocity-=normalize(dir)*f;}else if(percent<alignmentThresh){float td=alignmentThresh-separationThresh;float ap=(percent-separationThresh)/td;birdVelocity=texture2D(textureVelocity,ref).xyz;f=(.5-cos(ap*PI_2)*.5+.5)*delta;velocity+=normalize(birdVelocity)*f;}else{float td=1.-alignmentThresh;float ap=td==0.?1.:(percent-alignmentThresh)/td;f=(.5-(cos(ap*PI_2)*-.5+.5))*delta;velocity+=normalize(dir)*f;}}if(length(velocity)>limit)velocity=normalize(velocity)*limit;gl_FragColor=vec4(velocity,1.);}`
+const gpu=new GPUComputationRenderer(WIDTH,HEIGHT,renderer),tp=gpu.createTexture(),tv=gpu.createTexture()
+for(let k=0;k<tp.image.data.length;k+=4){tp.image.data[k]=Math.random()*BOUNDS-BOUNDS_HALF;tp.image.data[k+1]=Math.random()*BOUNDS-BOUNDS_HALF;tp.image.data[k+2]=Math.random()*BOUNDS-BOUNDS_HALF;tp.image.data[k+3]=1}
+for(let k=0;k<tv.image.data.length;k+=4){tv.image.data[k]=(Math.random()-.5)*10;tv.image.data[k+1]=(Math.random()-.5)*10;tv.image.data[k+2]=(Math.random()-.5)*10;tv.image.data[k+3]=1}
+const vv=gpu.addVariable('textureVelocity',velocityShader,tv),pv=gpu.addVariable('texturePosition',positionShader,tp);gpu.setVariableDependencies(vv,[pv,vv]);gpu.setVariableDependencies(pv,[pv,vv]);const pu=pv.material.uniforms,vu=vv.material.uniforms
+pu.time={value:0};pu.delta={value:0};vu.time={value:1};vu.delta={value:0};vu.testing={value:1};vu.separationDistance={value:REPOS.SEPARATION};vu.alignmentDistance={value:REPOS.ALIGNEMENT};vu.cohesionDistance={value:REPOS.COHESION};vu.freedomFactor={value:.75};vu.centralPull={value:REPOS.CENTRE};vu.predator={value:new THREE.Vector3()};vv.material.defines.BOUNDS=BOUNDS.toFixed(2);vv.wrapS=vv.wrapT=pv.wrapS=pv.wrapT=THREE.RepeatWrapping;const err=gpu.init();if(err)throw new Error(err)
 
-const gpu=new GPUComputationRenderer(WIDTH,HEIGHT,renderer)
-const tp=gpu.createTexture(),tv=gpu.createTexture()
-for(let k=0;k<tp.image.data.length;k+=4){
-  tp.image.data[k]=Math.random()*BOUNDS-BOUNDS_HALF
-  tp.image.data[k+1]=Math.random()*BOUNDS-BOUNDS_HALF
-  tp.image.data[k+2]=Math.random()*BOUNDS-BOUNDS_HALF
-  tp.image.data[k+3]=1
-}
-for(let k=0;k<tv.image.data.length;k+=4){
-  tv.image.data[k]=(Math.random()-.5)*10
-  tv.image.data[k+1]=(Math.random()-.5)*10
-  tv.image.data[k+2]=(Math.random()-.5)*10
-  tv.image.data[k+3]=1
-}
-const vv=gpu.addVariable('textureVelocity',velocityShader,tv)
-const pv=gpu.addVariable('texturePosition',positionShader,tp)
-gpu.setVariableDependencies(vv,[pv,vv]);gpu.setVariableDependencies(pv,[pv,vv])
-const pu=pv.material.uniforms,vu=vv.material.uniforms
-pu.time={value:0};pu.delta={value:0};vu.time={value:1};vu.delta={value:0};vu.testing={value:1}
-vu.separationDistance={value:REPOS.SEPARATION};vu.alignmentDistance={value:REPOS.ALIGNEMENT};vu.cohesionDistance={value:REPOS.COHESION};vu.freedomFactor={value:.75};vu.centralPull={value:REPOS.CENTRE};vu.predator={value:new THREE.Vector3()}
-vv.material.defines.BOUNDS=BOUNDS.toFixed(2)
-vv.wrapS=vv.wrapT=pv.wrapS=pv.wrapT=THREE.RepeatWrapping
-const err=gpu.init();if(err)throw new Error(err)
+// Connaissances : empreintes d'anciennes positions, même couleur, émission limitée puis pause.
+const KNOWLEDGE_LEVEL=.27,KNOWLEDGE_ON=2.5,KNOWLEDGE_OFF_MIN=5,KNOWLEDGE_OFF_MAX=9,AFTERIMAGE_LIFE=3,AFTERIMAGE_SPACING=.42,AFTERIMAGE_SIZE=9.4,AFTERIMAGE_ALPHA=.27
+function bodyColor(o){let c=new THREE.Color(0xffffff),found=false;o.traverse(n=>{if(!found&&n.isMesh&&n.material?.color){c=n.material.color.clone();found=true}});return c}
+const knowledgeIds=Array.from({length:BIRDS},(_,i)=>i).sort(()=>Math.random()-.5).slice(0,Math.round(BIRDS*KNOWLEDGE_LEVEL))
+const knowledge=new Map();for(const i of knowledgeIds)knowledge.set(i,{on:Math.random()*KNOWLEDGE_ON,off:0,last:new THREE.Vector3(1e9,1e9,1e9),marks:[]})
+const ghostGeo=new THREE.SphereGeometry(AFTERIMAGE_SIZE*.32,10,8)
+function emitGhost(i,k,now){const p=marbles[i].position;if(p.distanceTo(k.last)<AFTERIMAGE_SPACING)return;k.last.copy(p);const mat=new THREE.MeshBasicMaterial({color:bodyColor(marbles[i]),transparent:true,opacity:AFTERIMAGE_ALPHA,depthWrite:false,toneMapped:false});const mesh=new THREE.Mesh(ghostGeo,mat);mesh.position.copy(p);scene.add(mesh);k.marks.push({mesh,born:now})}
+function updateKnowledge(dt,now){for(const [i,k] of knowledge){if(k.on>0){k.on-=dt;emitGhost(i,k,now);if(k.on<=0)k.off=THREE.MathUtils.lerp(KNOWLEDGE_OFF_MIN,KNOWLEDGE_OFF_MAX,Math.random())}else{k.off-=dt;if(k.off<=0){k.on=KNOWLEDGE_ON;k.last.set(1e9,1e9,1e9)}}for(let j=k.marks.length-1;j>=0;j--){const g=k.marks[j],age=(now-g.born)/1000;if(age>=AFTERIMAGE_LIFE){scene.remove(g.mesh);g.mesh.material.dispose();k.marks.splice(j,1)}else g.mesh.material.opacity=AFTERIMAGE_ALPHA*(1-age/AFTERIMAGE_LIFE)}}}
 
-const pixels=new Float32Array(BIRDS*4)
-let last=performance.now(),mouseX=10000,mouseY=10000,halfX=innerWidth/2,halfY=innerHeight/2
-renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-halfX;mouseY=e.clientY-halfY})
-addEventListener('resize',()=>{halfX=innerWidth/2;halfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
-
-const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:30,ALIGNEMENT:1,COHESION:60,CAMERA:840,TAILLE:2.2,VITESSE:.35}
-const gui=new GUI({title:'REPOS — BILLES ENTITY'})
-for(const [k,v] of Object.entries(controls))gui.add(controls,k).disable()
-const status=document.createElement('div')
-status.textContent='REPOS uniquement — 300 billes Entity · éclairage Entity · moteur GPGPU historique'
-Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'})
-document.body.appendChild(status)
-
-function animate(){
- requestAnimationFrame(animate)
- const now=performance.now();let delta=(now-last)/1000;if(delta>1)delta=1;last=now
- const simulationDelta=delta*REPOS.VITESSE
- pu.time.value=now;pu.delta.value=simulationDelta;vu.time.value=now;vu.delta.value=simulationDelta
- vu.predator.value.set(.5*mouseX/halfX,-.5*mouseY/halfY,0);mouseX=mouseY=10000
- gpu.compute()
- renderer.readRenderTargetPixels(gpu.getCurrentRenderTarget(pv),0,0,WIDTH,HEIGHT,pixels)
- for(let i=0;i<BIRDS;i++)marbles[i].position.set(pixels[i*4],pixels[i*4+1],pixels[i*4+2])
- renderer.render(scene,camera)
-}
-animate()
+const pixels=new Float32Array(BIRDS*4);let last=performance.now(),mouseX=10000,mouseY=10000,halfX=innerWidth/2,halfY=innerHeight/2
+renderer.domElement.addEventListener('pointermove',e=>{if(e.isPrimary===false)return;mouseX=e.clientX-halfX;mouseY=e.clientY-halfY});addEventListener('resize',()=>{halfX=innerWidth/2;halfY=innerHeight/2;camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)})
+const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:30,ALIGNEMENT:1,COHESION:60,CAMERA:840,TAILLE:2.2,VITESSE:.35};const gui=new GUI({title:'REPOS — BILLES ENTITY'});for(const k of Object.keys(controls))gui.add(controls,k).disable()
+const status=document.createElement('div');status.textContent='REPOS — 300 billes Entity · éclairage Entity · traînées Connaissances';Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
+function animate(){requestAnimationFrame(animate);const now=performance.now();let delta=(now-last)/1000;if(delta>1)delta=1;last=now;const simulationDelta=delta*REPOS.VITESSE;pu.time.value=now;pu.delta.value=simulationDelta;vu.time.value=now;vu.delta.value=simulationDelta;vu.predator.value.set(.5*mouseX/halfX,-.5*mouseY/halfY,0);mouseX=mouseY=10000;gpu.compute();renderer.readRenderTargetPixels(gpu.getCurrentRenderTarget(pv),0,0,WIDTH,HEIGHT,pixels);for(let i=0;i<BIRDS;i++)marbles[i].position.set(pixels[i*4],pixels[i*4+1],pixels[i*4+2]);updateKnowledge(delta,now);renderer.render(scene,camera)}animate()
