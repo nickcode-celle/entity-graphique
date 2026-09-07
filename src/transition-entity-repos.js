@@ -34,16 +34,6 @@ function requestEntityDeparture(){
   api.request()
 }
 
-function waitForReposTarget(serialId){
-  const api=repos.contentWindow?.reposTransitionAPI
-  const target=api?.getTarget?.(serialId)
-  if(target){
-    entity.contentWindow?.entityTransitionAPI?.returnToTarget?.(target)
-    return
-  }
-  setTimeout(()=>waitForReposTarget(serialId),50)
-}
-
 addEventListener('message',e=>{
   if(e.source===entity.contentWindow){
     if(e.data?.type==='ENTITY_TRANSITION_READY')entityReady=true
@@ -52,10 +42,8 @@ addEventListener('message',e=>{
     else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
       repos.style.opacity='1'
-      entity.style.background='transparent'
-      waitForReposTarget(currentSerial)
-    }else if(e.data?.type==='ENTITY_TRANSITION_DONE'){
-      entity.style.display='none'
+      repos.style.zIndex='3'
+      requestAnimationFrame(()=>{entity.style.display='none'})
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
