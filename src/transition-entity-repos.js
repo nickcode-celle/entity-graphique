@@ -40,7 +40,7 @@ function beginBeadBlurBeforeCamera(){
   entity.style.willChange='filter'
   entity.style.transition='filter .95s ease-in'
   entity.style.filter='blur(30px)'
-  if(fullReached)setTimeout(revealBlurredRepos,950)
+  if(fullReached)setTimeout(revealBlurredRepos,2200)
 }
 
 function revealBlurredRepos(){
@@ -53,11 +53,11 @@ function revealBlurredRepos(){
   repos.style.willChange='filter,opacity'
   repos.style.filter='blur(30px)'
   repos.style.opacity='1'
-  repos.style.transition='filter 2.35s ease-out'
+  repos.style.transition='filter 3.1s ease-out'
 
   entity.style.zIndex='2'
   entity.style.willChange='filter,opacity'
-  entity.style.transition='filter 2.35s ease-out, opacity 2.35s ease-out'
+  entity.style.transition='filter 3.1s ease-out, opacity 3.1s ease-in-out'
 
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     entity.style.opacity='0'
@@ -69,7 +69,7 @@ function revealBlurredRepos(){
     repos.style.zIndex='3'
     repos.style.filter='none'
     repos.style.opacity='1'
-  },2450)
+  },3250)
 }
 
 addEventListener('message',e=>{
@@ -83,7 +83,7 @@ addEventListener('message',e=>{
     }else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
       fullReached=true
-      if(blurStarted)setTimeout(revealBlurredRepos,950)
+      if(blurStarted)setTimeout(revealBlurredRepos,2200)
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
