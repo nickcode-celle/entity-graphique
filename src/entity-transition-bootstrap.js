@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 
 const marbles=[]
-let entityGroup=null
 let capturedScene=null
 let capturedCamera=null
 let capturedRenderer=null
@@ -14,31 +13,20 @@ let overlayScene=null
 let overlayCanvas=null
 let flightStart=0
 let returnStart=0
-let startWorld=new THREE.Vector3()
-let control1=new THREE.Vector3()
-let control2=new THREE.Vector3()
-let cameraTarget=new THREE.Vector3()
-let returnFrom=new THREE.Vector3()
-let returnTo=new THREE.Vector3()
-let previousWorld=[]
-let previousLocal=[]
-let speedStreak=new Uint8Array(200)
-let lastWatch=performance.now()
+const startWorld=new THREE.Vector3(),control1=new THREE.Vector3(),control2=new THREE.Vector3(),cameraTarget=new THREE.Vector3(),returnFrom=new THREE.Vector3(),returnTo=new THREE.Vector3()
 let originalCanvas=null
-let originalGui=[]
 let materialStates=[]
 
+// Capture the real ENTITY marbles while the validated ENTITY module builds them.
 const originalAdd=THREE.Object3D.prototype.add
 THREE.Object3D.prototype.add=function(...objects){
   for(const object of objects){
-    if(object?.userData?.textureUnitScale!==undefined && marbles.length<200 && !marbles.includes(object)){
-      marbles.push(object)
-      entityGroup=this
-    }
+    if(object?.userData?.textureUnitScale!==undefined && marbles.length<200 && !marbles.includes(object)) marbles.push(object)
   }
   return originalAdd.apply(this,objects)
 }
 
+// Keep the render hook alive until the first real frame gives us the true scene/camera/renderer.
 const originalRender=THREE.WebGLRenderer.prototype.render
 let renderHookActive=true
 THREE.WebGLRenderer.prototype.render=function(scene,camera){
@@ -51,8 +39,19 @@ THREE.WebGLRenderer.prototype.render=function(scene,camera){
   return originalRender.call(this,scene,camera)
 }
 
-await import('./main-entity-50.js')
+// Observe the validated ENTITY's own migration Map. We do not choose a bead:
+// the first bead naturally selected by startCapacitySwap after the signal becomes the traveller.
+const originalMapSet=Map.prototype.set
+Map.prototype.set=function(key,value){
+  const result=originalMapSet.call(this,key,value)
+  if(transitionRequested && state==='idle' && Number.isInteger(key) && value && value.from?.isVector3 && value.to?.isVector3 && Number.isFinite(value.duration) && Number.isInteger(value.targetSlot)){
+    const velocity=value.to.clone().sub(value.from).normalize()
+    queueMicrotask(()=>detachNaturalBead(key,velocity))
+  }
+  return result
+}
 
+await import('./main-entity-50.js')
 THREE.Object3D.prototype.add=originalAdd
 
 function restoreRenderHook(){
@@ -64,12 +63,7 @@ function restoreRenderHook(){
 function waitForScene(){
   if(capturedScene&&capturedCamera&&capturedRenderer&&marbles.length>=200){
     restoreRenderHook()
-    for(let i=0;i<marbles.length;i++){
-      marbles[i].userData.serialId=i
-      previousWorld[i]=new THREE.Vector3()
-      marbles[i].getWorldPosition(previousWorld[i])
-      previousLocal[i]=marbles[i].position.clone()
-    }
+    for(let i=0;i<marbles.length;i++) marbles[i].userData.serialId=i
     window.entityTransitionAPI={
       request(){transitionRequested=true;return true},
       returnToTarget(target){
@@ -112,12 +106,13 @@ function cubic(out,a,b,c,d,t){
 }
 
 function detachNaturalBead(i,velocity){
-  if(state!=='idle'||!transitionRequested)return
+  if(state!=='idle'||!transitionRequested||!marbles[i])return
   serial=i
   travelBead=marbles[i]
   state='outbound'
   transitionRequested=false
   makeOverlay()
+
   travelBead.updateMatrixWorld(true)
   const q=new THREE.Quaternion(),s=new THREE.Vector3()
   travelBead.getWorldPosition(startWorld)
@@ -128,19 +123,18 @@ function detachNaturalBead(i,velocity){
   travelBead.position.copy(startWorld)
   travelBead.quaternion.copy(q)
   travelBead.scale.copy(s)
-  travelBead.userData.serialId=serial
+
   const forward=new THREE.Vector3();capturedCamera.getWorldDirection(forward)
   cameraTarget.copy(capturedCamera.position).addScaledVector(forward,7.2)
-  const tangent=velocity.lengthSq()>.0001?velocity.clone().normalize():cameraTarget.clone().sub(startWorld).normalize()
+  const tangent=velocity?.lengthSq()>.0001?velocity.clone().normalize():cameraTarget.clone().sub(startWorld).normalize()
   control1.copy(startWorld).addScaledVector(tangent,42)
   control2.copy(cameraTarget).addScaledVector(forward,-62)
   flightStart=performance.now()
+
   materialStates=[]
   travelBead.traverse(o=>{
-    if(o.material){
-      const mats=Array.isArray(o.material)?o.material:[o.material]
-      for(const m of mats)materialStates.push({m,transparent:m.transparent,opacity:m.opacity})
-    }
+    if(!o.material)return
+    for(const m of (Array.isArray(o.material)?o.material:[o.material])) materialStates.push({m,opacity:m.opacity})
   })
   window.parent.postMessage({type:'ENTITY_TRANSITION_BEAD',serial},'*')
 }
@@ -151,12 +145,6 @@ function setFade(alpha){
 
 function hideEntityBehindOverlay(){
   if(originalCanvas)originalCanvas.style.visibility='hidden'
-  for(const el of document.querySelectorAll('.lil-gui, body > div')){
-    if(el!==overlayCanvas && !el.contains(overlayCanvas)){
-      originalGui.push([el,el.style.visibility])
-      el.style.visibility='hidden'
-    }
-  }
   document.documentElement.style.background='transparent'
   document.body.style.background='transparent'
   const app=document.querySelector('#app');if(app)app.style.background='transparent'
@@ -187,31 +175,7 @@ function updateTravel(now){
 
 function watch(now){
   requestAnimationFrame(watch)
-  const dt=Math.max(.001,(now-lastWatch)/1000);lastWatch=now
-  if(state==='idle'&&transitionRequested&&marbles.length){
-    let best=-1,bestSpeed=0,bestVelocity=null
-    for(let i=0;i<marbles.length;i++){
-      const o=marbles[i]
-      const local=o.position
-      const delta=local.clone().sub(previousLocal[i])
-      const speed=delta.length()/dt
-      previousLocal[i].copy(local)
-      const world=new THREE.Vector3();o.getWorldPosition(world)
-      const worldVelocity=world.clone().sub(previousWorld[i]).divideScalar(dt)
-      previousWorld[i].copy(world)
-      if(speed>24){speedStreak[i]=Math.min(255,speedStreak[i]+1)}else speedStreak[i]=0
-      if(speedStreak[i]>=2&&speed>bestSpeed){best=i;bestSpeed=speed;bestVelocity=worldVelocity}
-    }
-    if(best>=0)detachNaturalBead(best,bestVelocity)
-  }else if(state==='idle'){
-    for(let i=0;i<marbles.length;i++){
-      previousLocal[i].copy(marbles[i].position)
-      marbles[i].getWorldPosition(previousWorld[i])
-    }
-  }
   updateTravel(now)
 }
 
-addEventListener('resize',()=>{
-  if(overlayRenderer)overlayRenderer.setSize(innerWidth,innerHeight)
-})
+addEventListener('resize',()=>{if(overlayRenderer)overlayRenderer.setSize(innerWidth,innerHeight)})
