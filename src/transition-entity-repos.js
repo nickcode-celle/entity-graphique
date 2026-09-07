@@ -74,7 +74,7 @@ addEventListener('message',e=>{
     else if(e.data?.type==='ENTITY_TRANSITION_BEAD'){
       currentSerial=e.data.serial
       if(blurTimer)clearTimeout(blurTimer)
-      blurTimer=setTimeout(beginBeadBlurBeforeCamera,6550)
+      blurTimer=setTimeout(beginBeadBlurBeforeCamera,9550)
     }else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
       fullReached=true
