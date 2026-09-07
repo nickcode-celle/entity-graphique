@@ -1,0 +1,60 @@
+name: Grow ENTITY 2000 test
+
+on:
+  push:
+    branches: [entity-double-helix-test-v1]
+    paths: [.github/workflows/grow-entity-2000.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-double-helix-test-v1
+          fetch-depth: 0
+      - name: Grow ENTITY sphere with population
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old="""function makeBodyCenters(){
+  const p=[new THREE.Vector3()]
+  p.push(
+    ...fibonacciShell(120,.95,.18,new THREE.Vector3(.22,-.14,.31)),
+    ...fibonacciShell(320,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),
+    ...fibonacciShell(560,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),
+    ...fibonacciShell(999,2.82,2.91,new THREE.Vector3(-.21,-.28,.37))
+  )
+  return p
+}"""
+          new="""function makeBodyCenters(){
+  const populationScale=Math.cbrt(BODY_COUNT/200)
+  const p=[new THREE.Vector3()]
+  p.push(
+    ...fibonacciShell(120,.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),
+    ...fibonacciShell(320,1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),
+    ...fibonacciShell(560,2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),
+    ...fibonacciShell(999,2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))
+  )
+  return p
+}"""
+          if old not in s:
+            raise SystemExit('STOP: expected 2000-ball body skeleton not found; no modification made')
+          p.write_text(s.replace(old,new))
+          print('ENTITY growth rule applied: radius scales with cube root of population')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Scale ENTITY radius with 2000-ball population"
+          git push origin HEAD:entity-double-helix-test-v1
