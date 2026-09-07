@@ -4,7 +4,7 @@ import GUI from 'lil-gui'
 
 // ENTITY eligible -> REPOS -> DONUT.
 // Aucun nouveau rendu visible : mêmes objets, même scène, mêmes lumières, mêmes matériaux.
-// Un renderer caché sert uniquement au calcul GPGPU historique.
+// Le GPGPU ne calcule que les nouvelles coordonnées des billes, dans le repère LOCAL d'Entity.
 const entityBodies=[]
 let entityGroup=null,controls=null
 const originalGuiAdd=GUI.prototype.add
@@ -41,7 +41,7 @@ const BOUNDS=REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)*BOUNDS_FACTOR
 const REPOS={CENTRE:4.9,SEPARATION:30,ALIGNEMENT:1,COHESION:60,VITESSE:.35,CAMERA:840,TAILLE:2.2}
 const DONUT={...REPOS,ALIGNEMENT:8}
 const HOLD_ENTITY=5
-const TRANSITION_REPOS=6
+const TRANSITION_REPOS=7
 const HOLD_REPOS=8
 const smooth=t=>{t=THREE.MathUtils.clamp(t,0,1);return t*t*(3-2*t)}
 
@@ -49,11 +49,9 @@ const positionShader=`uniform float time;uniform float delta;void main(){vec2 uv
 const velocityShader=`uniform float time;uniform float testing;uniform float delta;uniform float separationDistance;uniform float alignmentDistance;uniform float cohesionDistance;uniform float freedomFactor;uniform float centralPull;uniform vec3 predator;const float width=resolution.x;const float height=resolution.y;const float PI=3.141592653589793;const float PI_2=PI*2.0;float zoneRadius=40.0;float zoneRadiusSquared=1600.0;float separationThresh=.45;float alignmentThresh=.65;const float UPPER_BOUNDS=BOUNDS;const float SPEED_LIMIT=9.0;void main(){zoneRadius=separationDistance+alignmentDistance+cohesionDistance;separationThresh=separationDistance/zoneRadius;alignmentThresh=(separationDistance+alignmentDistance)/zoneRadius;zoneRadiusSquared=zoneRadius*zoneRadius;vec2 uv=gl_FragCoord.xy/resolution.xy;vec3 birdPosition,birdVelocity;vec3 selfPosition=texture2D(texturePosition,uv).xyz;vec3 selfVelocity=texture2D(textureVelocity,uv).xyz;float dist,distSquared,f,percent;vec3 dir;vec3 velocity=selfVelocity;float limit=SPEED_LIMIT;dir=predator*UPPER_BOUNDS-selfPosition;dir.z=0.;dist=length(dir);distSquared=dist*dist;float preyRadius=150.;float preyRadiusSq=preyRadius*preyRadius;if(dist<preyRadius){f=(distSquared/preyRadiusSq-1.0)*delta*100.;velocity+=normalize(dir)*f;limit+=5.;}dir=selfPosition;dist=length(dir);dir.y*=2.5;if(dist>.0001)velocity-=normalize(dir)*delta*centralPull;for(float y=0.;y<height;y++)for(float x=0.;x<width;x++){vec2 ref=vec2(x+.5,y+.5)/resolution.xy;birdPosition=texture2D(texturePosition,ref).xyz;dir=birdPosition-selfPosition;dist=length(dir);if(dist<.0001)continue;distSquared=dist*dist;if(distSquared>zoneRadiusSquared)continue;percent=distSquared/zoneRadiusSquared;if(percent<separationThresh){f=(separationThresh/percent-1.)*delta;velocity-=normalize(dir)*f;}else if(percent<alignmentThresh){float td=alignmentThresh-separationThresh;float ap=(percent-separationThresh)/td;birdVelocity=texture2D(textureVelocity,ref).xyz;f=(.5-cos(ap*PI_2)*.5+.5)*delta;velocity+=normalize(birdVelocity)*f;}else{float td=1.-alignmentThresh;float ap=td==0.?1.:(percent-alignmentThresh)/td;f=(.5-(cos(ap*PI_2)*-.5+.5))*delta;velocity+=normalize(dir)*f;}}if(length(velocity)>limit)velocity=normalize(velocity)*limit;gl_FragColor=vec4(velocity,1.);}`
 
 let active=false,donut=false,gpuRenderer=null,gpu=null,pv=null,vv=null,pu=null,vu=null,last=performance.now(),transitionStart=0
-const pixels=new Float32Array(BIRDS*4),startPositions=[],targetPositions=Array.from({length:BIRDS},()=>new THREE.Vector3())
+const pixels=new Float32Array(BIRDS*4),targetPositions=Array.from({length:BIRDS},()=>new THREE.Vector3())
 let allowReposWrite=false
 
-// Après le déclenchement, les boucles Entity n'ont plus le droit de déplacer les billes.
-// Le rendu Entity, ses lumières, ses ombres, textures et bloom continuent exactement comme avant.
 function lockMarblePosition(o){
   const p=o.position
   for(const name of ['set','copy','add','addScaledVector','sub','subVectors','lerp']){
@@ -65,12 +63,16 @@ function lockMarblePosition(o){
 
 function startRepos(){
   active=true;transitionStart=performance.now();last=transitionStart
-  entityGroup.updateMatrixWorld(true)
-  for(let i=0;i<BIRDS;i++){const p=new THREE.Vector3();marbles[i].getWorldPosition(p);startPositions[i]=p;lockMarblePosition(marbles[i])}
-  // Arrêt des mouvements propres Entity, sans toucher à son éclairage ni à son renderer.
+
+  // IMPORTANT : le moteur GPGPU travaille dans le MEME repère local que les billes.
+  // On ne mélange plus des positions monde avec des positions locales.
+  const startLocal=marbles.map(o=>o.position.clone())
+  for(const o of marbles)lockMarblePosition(o)
+
+  // On coupe seulement les forces de déplacement Entity. Rien ne change dans son rendu.
   if(controls){controls.V1=0;controls.ROTATION=0}
 
-  // Calcul GPGPU sur canvas caché uniquement.
+  // Renderer caché : calcul uniquement, jamais affiché.
   gpuRenderer=new THREE.WebGLRenderer({antialias:false,alpha:false})
   gpuRenderer.setSize(32,32,false)
   gpuRenderer.domElement.style.display='none'
@@ -78,9 +80,13 @@ function startRepos(){
   gpu=new GPUComputationRenderer(WIDTH,HEIGHT,gpuRenderer)
   const tp=gpu.createTexture(),tv=gpu.createTexture(),pd=tp.image.data,vd=tv.image.data
   for(let i=0;i<BIRDS;i++){
-    const p=startPositions[i]
+    const p=startLocal[i]
     pd[i*4]=p.x;pd[i*4+1]=p.y;pd[i*4+2]=p.z;pd[i*4+3]=1
-    vd[i*4]=(Math.random()-.5)*10;vd[i*4+1]=(Math.random()-.5)*10;vd[i*4+2]=(Math.random()-.5)*10;vd[i*4+3]=1
+    // Départ calme pour éviter une cassure visuelle ; la vitesse du moteur reste bien .35.
+    vd[i*4]=(Math.random()-.5)*.8
+    vd[i*4+1]=(Math.random()-.5)*.8
+    vd[i*4+2]=(Math.random()-.5)*.8
+    vd[i*4+3]=1
   }
   vv=gpu.addVariable('textureVelocity',velocityShader,tv);pv=gpu.addVariable('texturePosition',positionShader,tp)
   gpu.setVariableDependencies(vv,[pv,vv]);gpu.setVariableDependencies(pv,[pv,vv])
@@ -96,27 +102,33 @@ function animateRepos(){
   requestAnimationFrame(animateRepos)
   if(!active&&performance.now()-t0>HOLD_ENTITY*1000)startRepos()
   if(!active)return
+
   const now=performance.now(),elapsed=(now-transitionStart)/1000
   let delta=Math.min((now-last)/1000,.05);last=now
   const k=smooth(elapsed/TRANSITION_REPOS)
 
-  // Valeurs REPOS exactes. Les deux paramètres visuels historiques arrivent progressivement
-  // pour éviter tout saut, puis sont exactement à 840 / 2.2 une fois REPOS installé.
+  // REPOS : valeurs de curseurs exactes atteintes sans saut visuel.
   if(controls){
     controls.CAMERA=THREE.MathUtils.lerp(280,REPOS.CAMERA,k)
     controls.TAILLE_BILLES=THREE.MathUtils.lerp(.90,REPOS.TAILLE,k)
   }
-  const simulationDelta=delta*REPOS.VITESSE*(.04+.96*k)
+
+  const simulationDelta=delta*REPOS.VITESSE
   pu.time.value=now;pu.delta.value=simulationDelta;vu.time.value=now;vu.delta.value=simulationDelta
-  gpu.compute();gpuRenderer.readRenderTargetPixels(gpu.getCurrentRenderTarget(pv),0,0,WIDTH,HEIGHT,pixels)
+  gpu.compute()
+  gpuRenderer.readRenderTargetPixels(gpu.getCurrentRenderTarget(pv),0,0,WIDTH,HEIGHT,pixels)
+
+  // La matière visible suit progressivement le murmure ; à k=0 elle ne bouge pas,
+  // à k=1 elle suit exactement les coordonnées GPGPU.
+  const follow=.02+.98*k
   allowReposWrite=true
   for(let i=0;i<BIRDS;i++){
     targetPositions[i].set(pixels[i*4],pixels[i*4+1],pixels[i*4+2])
-    marbles[i].position.copy(startPositions[i]).lerp(targetPositions[i],k)
+    marbles[i].position.lerp(targetPositions[i],follow)
   }
   allowReposWrite=false
 
-  // DONUT historique : après REPOS, un seul changement direct, ALIGNEMENT 1 -> 8.
+  // DONUT historique : après REPOS établi, SEUL ALIGNEMENT passe directement de 1 à 8.
   if(!donut&&elapsed>=TRANSITION_REPOS+HOLD_REPOS){
     donut=true
     vu.alignmentDistance.value=DONUT.ALIGNEMENT
@@ -127,4 +139,11 @@ animateRepos()
 const status=document.createElement('div')
 Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',zIndex:'100',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'})
 document.body.appendChild(status)
-function statusLoop(){requestAnimationFrame(statusLoop);if(!active){status.textContent='ENTITY éligible — préparation REPOS';return}status.textContent=donut?'DONUT — BOUNDS .51 · CENTRE 4.9 · SEP 30 · ALIGN 8 · COH 60 · VITESSE .35 · CAMERA 840 · TAILLE 2.2':'REPOS — BOUNDS .51 · CENTRE 4.9 · SEP 30 · ALIGN 1 · COH 60 · VITESSE .35 · CAMERA 840 · TAILLE 2.2'}statusLoop()
+function statusLoop(){
+  requestAnimationFrame(statusLoop)
+  if(!active){status.textContent='ENTITY éligible — préparation REPOS';return}
+  status.textContent=donut
+    ?'DONUT — BOUNDS .51 · CENTRE 4.9 · SEP 30 · ALIGN 8 · COH 60 · VITESSE .35 · CAMERA 840 · TAILLE 2.2'
+    :'REPOS — BOUNDS .51 · CENTRE 4.9 · SEP 30 · ALIGN 1 · COH 60 · VITESSE .35 · CAMERA 840 · TAILLE 2.2'
+}
+statusLoop()
