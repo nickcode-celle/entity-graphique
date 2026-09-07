@@ -84,10 +84,10 @@ jobs:
           }
           '''
           s=s.replace(anchor,anchor+addition,1)
-          render_anchor='scene.background=bloomBackground;\ncamera.layers.set(bloomLayer);'
+          render_anchor='scene.background=bloomBackground;camera.layers.set(bloomLayer);'
           if render_anchor not in s:
               raise SystemExit('STOP: final render anchor not found')
-          s=s.replace(render_anchor,'syncMarbleRenderBatches();\n'+render_anchor,1)
+          s=s.replace(render_anchor,'syncMarbleRenderBatches();'+render_anchor,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
