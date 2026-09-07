@@ -1,0 +1,40 @@
+name: Set ENTITY default 775
+
+on:
+  push:
+    branches: [entity-double-helix-test-v1]
+    paths: [.github/workflows/set-entity-default-775.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-double-helix-test-v1
+          fetch-depth: 0
+      - name: Set default population to 775
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old="const TEST_COUNTS=[300,500,750,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:800,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50"
+          new="const TEST_COUNTS=[300,500,750,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:775,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50"
+          if old not in s:
+              raise SystemExit('STOP: current 800 selector not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Set ENTITY capacity test default to 775 balls"
+          git push origin HEAD:entity-double-helix-test-v1
