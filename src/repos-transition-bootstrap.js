@@ -3,7 +3,6 @@ import * as THREE from 'three'
 const SERIAL_COUNT=500
 let writeIndex=0,batches=0
 const serialPositions=Array.from({length:SERIAL_COUNT},()=>new THREE.Vector3())
-let capturedCamera=null
 
 const originalSetMatrixAt=THREE.InstancedMesh.prototype.setMatrixAt
 THREE.InstancedMesh.prototype.setMatrixAt=function(index,matrix){
@@ -14,16 +13,14 @@ THREE.InstancedMesh.prototype.setMatrixAt=function(index,matrix){
   return originalSetMatrixAt.call(this,index,matrix)
 }
 
-const originalRender=THREE.WebGLRenderer.prototype.render
-let renderHookActive=true
-THREE.WebGLRenderer.prototype.render=function(scene,camera){
-  if(!capturedCamera)capturedCamera=camera
-  return originalRender.call(this,scene,camera)
-}
-
 await import('./main-repos-transition-300.js')
 
-function restoreRenderHook(){if(renderHookActive){THREE.WebGLRenderer.prototype.render=originalRender;renderHookActive=false}}
+// REPOS uses the validated 55° camera at z=840 during this transition.
+// Build the same camera explicitly instead of trying to intercept renderer.render.
+const reposCamera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,3000)
+reposCamera.position.z=840
+reposCamera.updateProjectionMatrix()
+reposCamera.updateMatrixWorld(true)
 
 function forceValidatedRepos(){
   const wanted={SEPARATION:'40',ALIGNEMENT:'1',COHESION:'60',VITESSE:'0.35'}
@@ -44,12 +41,14 @@ let tries=0
 const timer=setInterval(()=>{tries++;if(forceValidatedRepos()||tries>100)clearInterval(timer)},50)
 
 function expose(){
-  if(capturedCamera&&batches>=2){
-    restoreRenderHook()
+  if(batches>=2){
     window.reposTransitionAPI={
       getTarget(serialId){
         const i=((serialId%SERIAL_COUNT)+SERIAL_COUNT)%SERIAL_COUNT
-        const p=serialPositions[i].clone().project(capturedCamera)
+        reposCamera.aspect=innerWidth/innerHeight
+        reposCamera.updateProjectionMatrix()
+        reposCamera.updateMatrixWorld(true)
+        const p=serialPositions[i].clone().project(reposCamera)
         return {serialId:i,x:p.x,y:p.y,z:p.z}
       },
       state(){return {batches}}
