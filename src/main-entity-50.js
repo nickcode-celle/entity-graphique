@@ -7,7 +7,7 @@ import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import './style.css'
 
-const BODY_COUNT=2000,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const TEST_COUNTS=[300,500,750,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
@@ -46,13 +46,14 @@ function forceExactMean(v,t){const r=v.slice(),d=t*r.length;for(let p=0;p<30;p++
 function buildLevels(dom,a){const l=new Array(BODY_COUNT);for(let p=0;p<dom.length;p++){const ids=a.map((x,i)=>x===p?i:-1).filter(i=>i>=0),v=forceExactMean(ids.map(()=>randomEncadredValue(dom[p].level)),dom[p].level);ids.forEach((id,k)=>l[id]=v[k])}return l}
 function fibonacciShell(count,radius,phase,rotation){const pts=[],q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase,p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
 function makeBodyCenters(){
-  const populationScale=Math.cbrt(BODY_COUNT/200)
-  const p=[new THREE.Vector3()]
+  const populationScale=Math.cbrt(BODY_COUNT/200),p=[new THREE.Vector3()]
+  const counts=[.06,.16,.28,.50].map(x=>Math.floor((BODY_COUNT-1)*x))
+  counts[3]=BODY_COUNT-1-counts[0]-counts[1]-counts[2]
   p.push(
-    ...fibonacciShell(120,.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),
-    ...fibonacciShell(320,1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),
-    ...fibonacciShell(560,2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),
-    ...fibonacciShell(999,2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))
+    ...fibonacciShell(counts[0],.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),
+    ...fibonacciShell(counts[1],1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),
+    ...fibonacciShell(counts[2],2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),
+    ...fibonacciShell(counts[3],2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))
   )
   return p
 }
@@ -115,7 +116,7 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())
+const sphereCenters=makeBodyCenters(),gorillaCenters=sphereCenters,centers=sphereCenters.map(p=>p.clone())
 const GORILLA_MORPH_START=1,GORILLA_MORPH_DURATION=3
 function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-GORILLA_MORPH_START)/GORILLA_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],gorillaCenters[i],s);updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
