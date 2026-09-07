@@ -7,7 +7,7 @@ import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import './style.css'
 
-const TEST_COUNTS=[300,500,750,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:875,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const TEST_COUNTS=[300,500,750,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:800,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
