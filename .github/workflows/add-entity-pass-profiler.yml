@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +30,7 @@ jobs:
           anchor="function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}\n"
           if anchor not in s:
               raise SystemExit('STOP: personality material anchor not found')
-          addition=r'''
+          addition='''
 let marbleRenderBatches=null
 function initMarbleRenderBatches(){
   const buckets=new Map(),records=[]
