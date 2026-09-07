@@ -46,12 +46,13 @@ function forceExactMean(v,t){const r=v.slice(),d=t*r.length;for(let p=0;p<30;p++
 function buildLevels(dom,a){const l=new Array(BODY_COUNT);for(let p=0;p<dom.length;p++){const ids=a.map((x,i)=>x===p?i:-1).filter(i=>i>=0),v=forceExactMean(ids.map(()=>randomEncadredValue(dom[p].level)),dom[p].level);ids.forEach((id,k)=>l[id]=v[k])}return l}
 function fibonacciShell(count,radius,phase,rotation){const pts=[],q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase,p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
 function makeBodyCenters(){
+  const populationScale=Math.cbrt(BODY_COUNT/200)
   const p=[new THREE.Vector3()]
   p.push(
-    ...fibonacciShell(120,.95,.18,new THREE.Vector3(.22,-.14,.31)),
-    ...fibonacciShell(320,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),
-    ...fibonacciShell(560,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),
-    ...fibonacciShell(999,2.82,2.91,new THREE.Vector3(-.21,-.28,.37))
+    ...fibonacciShell(120,.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),
+    ...fibonacciShell(320,1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),
+    ...fibonacciShell(560,2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),
+    ...fibonacciShell(999,2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))
   )
   return p
 }
