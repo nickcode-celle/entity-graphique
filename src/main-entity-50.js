@@ -8,7 +8,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import './style.css'
 
 const BODY_COUNT=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
-const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true})
+const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
 renderer.shadowMap.enabled=true
