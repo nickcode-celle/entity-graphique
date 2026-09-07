@@ -49,19 +49,24 @@ function revealBlurredRepos(){
   if(blurTimer){clearTimeout(blurTimer);blurTimer=null}
   if(!blurStarted){beginBeadBlurBeforeCamera();return}
 
-  repos.style.zIndex='3'
+  repos.style.zIndex='1'
   repos.style.willChange='filter,opacity'
   repos.style.filter='blur(30px)'
-  repos.style.opacity='0'
-  repos.style.transition='filter 2.35s ease-out, opacity 1.65s ease-out'
+  repos.style.opacity='1'
+  repos.style.transition='filter 2.35s ease-out'
+
+  entity.style.zIndex='2'
+  entity.style.willChange='filter,opacity'
+  entity.style.transition='filter 2.35s ease-out, opacity 2.35s ease-out'
 
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    repos.style.opacity='1'
+    entity.style.opacity='0'
     repos.style.filter='blur(0px)'
   }))
 
   setTimeout(()=>{
     entity.style.display='none'
+    repos.style.zIndex='3'
     repos.style.filter='none'
     repos.style.opacity='1'
   },2450)
