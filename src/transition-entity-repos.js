@@ -34,6 +34,14 @@ function requestEntityDeparture(){
   api.request()
 }
 
+function sendReturnToRepos(serialId){
+  const rapi=repos.contentWindow?.reposTransitionAPI
+  const eapi=entity.contentWindow?.entityTransitionAPI
+  const target=rapi?.getTarget?.(serialId)
+  if(!target||!eapi?.returnToTarget){setTimeout(()=>sendReturnToRepos(serialId),50);return}
+  if(!eapi.returnToTarget(target))setTimeout(()=>sendReturnToRepos(serialId),50)
+}
+
 addEventListener('message',e=>{
   if(e.source===entity.contentWindow){
     if(e.data?.type==='ENTITY_TRANSITION_READY')entityReady=true
@@ -42,8 +50,10 @@ addEventListener('message',e=>{
     else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
       repos.style.opacity='1'
+      sendReturnToRepos(currentSerial)
+    }else if(e.data?.type==='ENTITY_TRANSITION_DONE'){
+      entity.style.display='none'
       repos.style.zIndex='3'
-      requestAnimationFrame(()=>{entity.style.display='none'})
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
