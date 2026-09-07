@@ -1,4 +1,4 @@
-name: Optimize ENTITY bloom layer only
+name: Profile ENTITY final render load
 
 on:
   push:
@@ -19,32 +19,32 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Restrict bloom render to bloom layer
+      - name: Add exact final-pass render counters
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          anchor="const bloomLayer=1\nconst bloomComposer=new EffectComposer(renderer)\n"
-          replacement="const bloomLayer=1\nconst bloomCameraLayers=camera.layers.mask\nconst bloomComposer=new EffectComposer(renderer)\n"
-          if anchor not in s or 'bloomCameraLayers' in s:
-              raise SystemExit('STOP: bloom setup anchor unavailable or already optimized')
-          s=s.replace(anchor,replacement,1)
-          old='bloomComposer.render();const tb1=performance.now();bloomMs+=tb1-tb0;finalComposer.render();'
-          new='camera.layers.set(bloomLayer);bloomComposer.render();camera.layers.mask=bloomCameraLayers;const tb1=performance.now();bloomMs+=tb1-tb0;finalComposer.render();'
-          if old not in s:
-              raise SystemExit('STOP: bloom render anchor not found')
+          old="const passProfile={bloomRender:0,bloomEffect:0,finalRender:0,finalMix:0,finalOutput:0,samples:0,last:performance.now()};function measurePass(pass,key){const original=pass.render.bind(pass);pass.render=function(...args){const t=performance.now();const result=original(...args);passProfile[key]+=performance.now()-t;return result}}measurePass(bloomComposer.passes[0],'bloomRender');measurePass(bloomComposer.passes[1],'bloomEffect');measurePass(finalComposer.passes[0],'finalRender');"
+          new="const passProfile={bloomRender:0,bloomEffect:0,finalRender:0,finalMix:0,finalOutput:0,finalCalls:0,finalTriangles:0,samples:0,last:performance.now()};function measurePass(pass,key){const original=pass.render.bind(pass);pass.render=function(...args){const t=performance.now();const result=original(...args);passProfile[key]+=performance.now()-t;if(key==='finalRender'){passProfile.finalCalls+=renderer.info.render.calls;passProfile.finalTriangles+=renderer.info.render.triangles}return result}}measurePass(bloomComposer.passes[0],'bloomRender');measurePass(bloomComposer.passes[1],'bloomEffect');measurePass(finalComposer.passes[0],'finalRender');"
+          if old not in s or 'finalTriangles:0' in s:
+              raise SystemExit('STOP: profiler anchor unavailable or counters already present')
           s=s.replace(old,new,1)
+          old2="+' ms\\nmix '+(passProfile.finalMix/n).toFixed(2)+' ms\\noutput '+(passProfile.finalOutput/n).toFixed(2)+' ms';passProfile.bloomRender=passProfile.bloomEffect=passProfile.finalRender=passProfile.finalMix=passProfile.finalOutput=0;passProfile.samples=0"
+          new2="+' ms\\nmix '+(passProfile.finalMix/n).toFixed(2)+' ms\\noutput '+(passProfile.finalOutput/n).toFixed(2)+' ms\\nfinal calls '+Math.round(passProfile.finalCalls/n)+'\\nfinal triangles '+Math.round(passProfile.finalTriangles/n).toLocaleString();passProfile.bloomRender=passProfile.bloomEffect=passProfile.finalRender=passProfile.finalMix=passProfile.finalOutput=passProfile.finalCalls=passProfile.finalTriangles=0;passProfile.samples=0"
+          if old2 not in s:
+              raise SystemExit('STOP: profiler label anchor not found')
+          s=s.replace(old2,new2,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit optimization
+      - name: Commit profiler
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Render bloom pass on bloom layer only"
+          git commit -m "Measure exact final render calls and triangles"
           git push origin HEAD:entity-double-helix-test-v1
