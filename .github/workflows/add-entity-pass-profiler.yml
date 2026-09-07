@@ -1,4 +1,4 @@
-name: Add ENTITY depth prepass
+name: Profile ENTITY batch sync
 
 on:
   push:
@@ -18,38 +18,39 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Add depth prepass without changing ENTITY appearance
+      - name: Remove slower depth prepass and measure batch sync
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          if 'function renderEntityDepthPrepass()' in s:
-              raise SystemExit('STOP: depth prepass already present')
-          batch_anchor='''    batch.castShadow=true\n    batch.receiveShadow=true\n    batch.frustumCulled=false\n    batch.perObjectFrustumCulled=true\n'''
-          if batch_anchor not in s:
-              raise SystemExit('STOP: batch anchor not found')
-          s=s.replace(batch_anchor,batch_anchor+'    batch.layers.enable(2)\n',1)
-          sync_anchor='''function syncMarbleRenderBatches(){\n  if(!marbleRenderBatches)initMarbleRenderBatches()\n  for(const o of marbleRenderBatches){\n    o.updateMatrix()\n    const batch=o.userData.renderBatch,id=o.userData.renderBatchId\n    batch.setMatrixAt(id,o.matrix)\n    batch.setVisibleAt(id,o.visible)\n    const hex=o.material.color.getHex()\n    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}\n  }\n}\n'''
-          if sync_anchor not in s:
-              raise SystemExit('STOP: sync anchor not found')
-          addition='''\nconst depthPrepassMaterial=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true})\nconst depthClearColor=new THREE.Color()\nfunction renderEntityDepthPrepass(){\n  const previousOverride=scene.overrideMaterial\n  const previousAutoUpdate=renderer.shadowMap.autoUpdate\n  const previousClearAlpha=renderer.getClearAlpha()\n  renderer.getClearColor(depthClearColor)\n  const savedClearColor=depthClearColor.clone()\n  if(scene.background&&scene.background.isColor)renderer.setClearColor(scene.background,1)\n  else renderer.setClearColor(0x000000,0)\n  renderer.setRenderTarget(finalComposer.readBuffer)\n  renderer.clear(true,true,true)\n  renderer.shadowMap.autoUpdate=false\n  scene.overrideMaterial=depthPrepassMaterial\n  camera.layers.set(2)\n  renderer.render(scene,camera)\n  scene.overrideMaterial=previousOverride\n  renderer.shadowMap.autoUpdate=previousAutoUpdate\n  renderer.setClearColor(savedClearColor,previousClearAlpha)\n}\n'''
-          s=s.replace(sync_anchor,sync_anchor+addition,1)
-          render_anchor="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);"
-          if render_anchor not in s:
-              raise SystemExit('STOP: final render anchor not found')
-          replacement="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;renderEntityDepthPrepass();camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.passes[0].clear=false;const finalStart=performance.now();finalComposer.render(dt);finalComposer.passes[0].clear=true;"
-          s=s.replace(render_anchor,replacement,1)
+          if 'BATCH SYNC' in s:
+              raise SystemExit('STOP: batch sync profiler already present')
+          s=s.replace('    batch.layers.enable(2)\n','',1)
+          depth_block='''\nconst depthPrepassMaterial=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true})\nconst depthClearColor=new THREE.Color()\nfunction renderEntityDepthPrepass(){\n  const previousOverride=scene.overrideMaterial\n  const previousAutoUpdate=renderer.shadowMap.autoUpdate\n  const previousClearAlpha=renderer.getClearAlpha()\n  renderer.getClearColor(depthClearColor)\n  const savedClearColor=depthClearColor.clone()\n  if(scene.background&&scene.background.isColor)renderer.setClearColor(scene.background,1)\n  else renderer.setClearColor(0x000000,0)\n  renderer.setRenderTarget(finalComposer.readBuffer)\n  renderer.clear(true,true,true)\n  renderer.shadowMap.autoUpdate=false\n  scene.overrideMaterial=depthPrepassMaterial\n  camera.layers.set(2)\n  renderer.render(scene,camera)\n  scene.overrideMaterial=previousOverride\n  renderer.shadowMap.autoUpdate=previousAutoUpdate\n  renderer.setClearColor(savedClearColor,previousClearAlpha)\n}\n'''
+          if depth_block not in s:
+              raise SystemExit('STOP: depth prepass block not found')
+          s=s.replace(depth_block,'\n',1)
+          current="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;renderEntityDepthPrepass();camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.passes[0].clear=false;const finalStart=performance.now();finalComposer.render(dt);finalComposer.passes[0].clear=true;"
+          original="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);"
+          if current not in s:
+              raise SystemExit('STOP: depth render sequence not found')
+          s=s.replace(current,original,1)
+          old='''function syncMarbleRenderBatches(){\n  if(!marbleRenderBatches)initMarbleRenderBatches()\n  for(const o of marbleRenderBatches){\n    o.updateMatrix()\n    const batch=o.userData.renderBatch,id=o.userData.renderBatchId\n    batch.setMatrixAt(id,o.matrix)\n    batch.setVisibleAt(id,o.visible)\n    const hex=o.material.color.getHex()\n    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}\n  }\n}\n'''
+          new='''let batchSyncMs=0\nfunction syncMarbleRenderBatches(){\n  const t=performance.now()\n  if(!marbleRenderBatches)initMarbleRenderBatches()\n  for(const o of marbleRenderBatches){\n    o.updateMatrix()\n    const batch=o.userData.renderBatch,id=o.userData.renderBatchId\n    batch.setMatrixAt(id,o.matrix)\n    batch.setVisibleAt(id,o.visible)\n    const hex=o.material.color.getHex()\n    if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}\n  }\n  batchSyncMs=performance.now()-t\n}\nconst batchSyncLabel=document.createElement('div')\nObject.assign(batchSyncLabel.style,{position:'fixed',right:'14px',top:'430px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'6px 8px',font:'12px/1.4 monospace',pointerEvents:'none'})\nbatchSyncLabel.textContent='BATCH SYNC'\ndocument.body.appendChild(batchSyncLabel)\nsetInterval(()=>{batchSyncLabel.textContent='BATCH SYNC '+batchSyncMs.toFixed(2)+' ms'},500)\n'''
+          if old not in s:
+              raise SystemExit('STOP: batch sync function anchor not found')
+          s=s.replace(old,new,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit depth prepass
+      - name: Commit profiling change
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Add exact ENTITY depth prepass"
+          git commit -m "Remove depth prepass and profile ENTITY batch sync"
           git push origin HEAD:entity-double-helix-test-v1
