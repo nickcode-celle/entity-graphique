@@ -24,7 +24,7 @@ label.textContent='ENTITY → REPOS · diagnostic'
 Object.assign(label.style,{position:'fixed',left:'18px',top:'18px',zIndex:'10',font:'14px system-ui',color:'white',background:'rgba(0,0,0,.62)',padding:'8px 10px',borderRadius:'8px',pointerEvents:'none',whiteSpace:'pre-line'})
 document.body.appendChild(label)
 
-let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now()
+let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now(),blurStarted=false
 
 function requestEntityDeparture(){
   if(requested)return
@@ -34,12 +34,22 @@ function requestEntityDeparture(){
   api.request()
 }
 
-function sendReturnToRepos(serialId){
-  const rapi=repos.contentWindow?.reposTransitionAPI
-  const eapi=entity.contentWindow?.entityTransitionAPI
-  const target=rapi?.getTarget?.(serialId)
-  if(!target||!eapi?.returnToTarget){setTimeout(()=>sendReturnToRepos(serialId),50);return}
-  if(!eapi.returnToTarget(target))setTimeout(()=>sendReturnToRepos(serialId),50)
+function revealReposThroughBeadBlur(){
+  if(blurStarted)return
+  blurStarted=true
+  repos.style.opacity='1'
+  entity.style.transformOrigin='50% 50%'
+  entity.style.willChange='filter,opacity,transform'
+  entity.style.transition='filter .55s ease, transform .55s ease, opacity 1.35s ease .32s'
+  requestAnimationFrame(()=>{
+    entity.style.filter='blur(34px)'
+    entity.style.transform='scale(1.08)'
+    requestAnimationFrame(()=>{entity.style.opacity='0'})
+  })
+  setTimeout(()=>{
+    entity.style.display='none'
+    repos.style.zIndex='3'
+  },1850)
 }
 
 addEventListener('message',e=>{
@@ -49,11 +59,7 @@ addEventListener('message',e=>{
     else if(e.data?.type==='ENTITY_TRANSITION_BEAD')currentSerial=e.data.serial
     else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
-      repos.style.opacity='1'
-      sendReturnToRepos(currentSerial)
-    }else if(e.data?.type==='ENTITY_TRANSITION_DONE'){
-      entity.style.display='none'
-      repos.style.zIndex='3'
+      revealReposThroughBeadBlur()
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
