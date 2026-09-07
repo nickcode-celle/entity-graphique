@@ -24,7 +24,7 @@ label.textContent='ENTITY → REPOS · diagnostic'
 Object.assign(label.style,{position:'fixed',left:'18px',top:'18px',zIndex:'10',font:'14px system-ui',color:'white',background:'rgba(0,0,0,.62)',padding:'8px 10px',borderRadius:'8px',pointerEvents:'none',whiteSpace:'pre-line'})
 document.body.appendChild(label)
 
-let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now(),blurStarted=false,revealStarted=false,blurTimer=null
+let entityReady=false,reposReady=false,requested=false,currentSerial=-1,startAt=performance.now(),blurStarted=false,revealStarted=false,blurTimer=null,fullReached=false
 
 function requestEntityDeparture(){
   if(requested)return
@@ -40,13 +40,14 @@ function beginBeadBlurBeforeCamera(){
   entity.style.willChange='filter'
   entity.style.transition='filter .95s ease-in'
   entity.style.filter='blur(30px)'
+  if(fullReached)setTimeout(revealBlurredRepos,950)
 }
 
 function revealBlurredRepos(){
   if(revealStarted)return
   revealStarted=true
   if(blurTimer){clearTimeout(blurTimer);blurTimer=null}
-  if(!blurStarted)beginBeadBlurBeforeCamera()
+  if(!blurStarted){beginBeadBlurBeforeCamera();return}
 
   repos.style.zIndex='3'
   repos.style.willChange='filter,opacity'
@@ -73,10 +74,11 @@ addEventListener('message',e=>{
     else if(e.data?.type==='ENTITY_TRANSITION_BEAD'){
       currentSerial=e.data.serial
       if(blurTimer)clearTimeout(blurTimer)
-      blurTimer=setTimeout(beginBeadBlurBeforeCamera,2550)
+      blurTimer=setTimeout(beginBeadBlurBeforeCamera,6550)
     }else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
-      revealBlurredRepos()
+      fullReached=true
+      if(blurStarted)setTimeout(revealBlurredRepos,950)
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
