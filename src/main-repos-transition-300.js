@@ -10,7 +10,7 @@ import {createEntityBeadTemplates,addEntityLights} from './entity-bead-factory.j
 // BASE PHYSIQUE FIGÉE : DONUT b7f952 validé. Ne pas modifier le moteur ni 30 / 8 / 60.
 const DONUT_ELIGIBILITY={beads:500,reposAcquired:true,emotionalTrigger:'JOIE',domains:{PERSONNALITE:61,RELATION:62,GOUTS:63,OPINIONS_VALEURS:61,CONNAISSANCES:62,MONDE_PROPRE:52,HISTOIRE_VECUE:48,CAPACITES:44}}
 const BIRDS=500,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800,ENTITY_VISUAL_UNIT=6
-const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:30,ALIGNEMENT:8,COHESION:60,CAMERA:840,TAILLE:2.2,VITESSE:.35}
+const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:35,ALIGNEMENT:40,COHESION:1,CAMERA:840,TAILLE:2.2,VITESSE:.35}
 const templates=createEntityBeadTemplates(200)
 function currentBounds(){return REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)*controls.BOUNDS}
 const eligibleDomains=Object.values(DONUT_ELIGIBILITY.domains).filter(v=>v>=60&&v<=65).sort((a,b)=>a-b)
@@ -49,7 +49,6 @@ const historyHaloTexture=makeHistoryHaloTexture(),HISTORY_COUNT=Math.round(BIRDS
 for(const i of historyIds){const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:historyHaloTexture,color:beadColor(i),transparent:true,opacity:.72,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}));halo.renderOrder=0;scene.add(halo);historyHalos.push({i,halo})}
 function updateHistoryHalos(){const haloScale=controls.TAILLE*ENTITY_VISUAL_UNIT*3.2;for(const h of historyHalos){const q=h.i*3;h.halo.position.set(renderPositions[q],renderPositions[q+1],renderPositions[q+2]);h.halo.scale.setScalar(haloScale)}}
 
-// CONNAISSANCES — même ratio visuel empreinte/bille que l'ENTITY 50 %, indispensable pour une future transition sans saut d'effet.
 const KNOWLEDGE_LEVEL=DONUT_ELIGIBILITY.domains.CONNAISSANCES/100,KNOWLEDGE_ON=2.5,KNOWLEDGE_OFF_MIN=5,KNOWLEDGE_OFF_MAX=9,AFTERIMAGE_LIFE=3,AFTERIMAGE_SPACING=.42,ENTITY_50_AFTERIMAGE_SIZE=9.4,ENTITY_50_BEAD_RADIUS=6*.90,AFTERIMAGE_ALPHA=.04,AFTERIMAGE_PER_BEAD=220,AFTERIMAGE_CAPACITY=BIRDS*AFTERIMAGE_PER_BEAD
 function currentAfterimageSize(){return ENTITY_50_AFTERIMAGE_SIZE*(controls.TAILLE*ENTITY_VISUAL_UNIT/ENTITY_50_BEAD_RADIUS)}
 const knowledgeOffBase=()=>THREE.MathUtils.lerp(KNOWLEDGE_OFF_MAX,KNOWLEDGE_OFF_MIN,KNOWLEDGE_LEVEL),nextKnowledgeOff=()=>knowledgeOffBase()*THREE.MathUtils.lerp(.72,1.28,Math.random())
