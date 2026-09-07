@@ -32,7 +32,7 @@ jobs:
               raise SystemExit('STOP: current 1500 default not found')
           p.write_text(s.replace(old,new,1))
           PY
-      - name: Commit
+      - name: Commit 2000-ball test
         shell: bash
         run: |
           git config user.name github-actions[bot]
