@@ -10,7 +10,7 @@ import {createEntityBeadTemplates,addEntityLights} from './entity-bead-factory.j
 // BASE PHYSIQUE FIGÉE : DONUT b7f952 validé. Ne pas modifier le moteur ni 30 / 8 / 60.
 const DONUT_ELIGIBILITY={beads:500,reposAcquired:true,emotionalTrigger:'JOIE',domains:{PERSONNALITE:61,RELATION:62,GOUTS:63,OPINIONS_VALEURS:61,CONNAISSANCES:62,MONDE_PROPRE:52,HISTOIRE_VECUE:48,CAPACITES:44}}
 const BIRDS=500,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800,ENTITY_VISUAL_UNIT=6
-const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:60,ALIGNEMENT:20,COHESION:20,CAMERA:840,TAILLE:2.2,VITESSE:.35}
+const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:60,ALIGNEMENT:30,COHESION:20,CAMERA:840,TAILLE:2.2,VITESSE:.6}
 const templates=createEntityBeadTemplates(200)
 function currentBounds(){return REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)*controls.BOUNDS}
 const eligibleDomains=Object.values(DONUT_ELIGIBILITY.domains).filter(v=>v>=60&&v<=65).sort((a,b)=>a-b)
