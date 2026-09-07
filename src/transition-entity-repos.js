@@ -40,7 +40,7 @@ function beginBeadBlurBeforeCamera(){
   entity.style.willChange='filter'
   entity.style.transition='filter .95s ease-in'
   entity.style.filter='blur(30px)'
-  if(fullReached)setTimeout(revealBlurredRepos,2200)
+  if(fullReached)setTimeout(revealBlurredRepos,3200)
 }
 
 function revealBlurredRepos(){
@@ -49,27 +49,33 @@ function revealBlurredRepos(){
   if(blurTimer){clearTimeout(blurTimer);blurTimer=null}
   if(!blurStarted){beginBeadBlurBeforeCamera();return}
 
+  const eapi=entity.contentWindow?.entityTransitionAPI
+  if(!eapi?.fadeSelectedBead){
+    revealStarted=false
+    return
+  }
+
   repos.style.zIndex='1'
   repos.style.willChange='filter,opacity'
   repos.style.filter='blur(30px)'
   repos.style.opacity='1'
-  repos.style.transition='filter 3.1s ease-out'
+  repos.style.transition='filter 3.2s ease-out'
 
   entity.style.zIndex='2'
-  entity.style.willChange='filter,opacity'
-  entity.style.transition='filter 3.1s ease-out, opacity 3.1s ease-in-out'
+  entity.style.opacity='1'
+  entity.style.willChange='filter'
+  entity.style.transition='filter 3.2s ease-out'
+
+  const started=eapi.fadeSelectedBead(3.2)
+  if(!started){
+    revealStarted=false
+    return
+  }
 
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    entity.style.opacity='0'
+    entity.style.filter='blur(0px)'
     repos.style.filter='blur(0px)'
   }))
-
-  setTimeout(()=>{
-    entity.style.display='none'
-    repos.style.zIndex='3'
-    repos.style.filter='none'
-    repos.style.opacity='1'
-  },3250)
 }
 
 addEventListener('message',e=>{
@@ -83,7 +89,12 @@ addEventListener('message',e=>{
     }else if(e.data?.type==='ENTITY_TRANSITION_FULL'){
       currentSerial=e.data.serial
       fullReached=true
-      if(blurStarted)setTimeout(revealBlurredRepos,2200)
+      if(blurStarted)setTimeout(revealBlurredRepos,3200)
+    }else if(e.data?.type==='ENTITY_TRANSITION_FADE_DONE'){
+      entity.style.display='none'
+      repos.style.zIndex='3'
+      repos.style.filter='none'
+      repos.style.opacity='1'
     }
   }else if(e.source===repos.contentWindow&&e.data?.type==='REPOS_TRANSITION_READY')reposReady=true
 })
