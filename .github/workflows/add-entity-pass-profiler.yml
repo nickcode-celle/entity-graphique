@@ -38,8 +38,8 @@ jobs:
           s=s.replace(old,new,1)
           p.write_text(s)
           PY
-      - name: Build before commit
-        run: npm ci && npm run build
+      - name: Install and build before commit
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
       - name: Commit optimization
         shell: bash
         run: |
