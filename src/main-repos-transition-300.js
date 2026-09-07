@@ -3,11 +3,14 @@ import GUI from 'lil-gui'
 
 // DONUT validé : mêmes 500 billes, mêmes curseurs 30 / 8 / 60.
 // Test rendu mobile-first : géométries/materials identiques, mais meshes regroupés en InstancedMesh.
+// Le moteur Entity source est chargé uniquement pour capturer les billes : sa boucle RAF est neutralisée.
 const DONUT_ELIGIBILITY={beads:500,reposAcquired:true,emotionalTrigger:'JOIE',domains:{PERSONNALITE:61,RELATION:62,GOUTS:63,OPINIONS_VALEURS:61,CONNAISSANCES:62,MONDE_PROPRE:52,HISTOIRE_VECUE:48,CAPACITES:44}}
 const captured=[];let entityGroup=null
 const originalAdd=THREE.Object3D.prototype.add
+const originalRAF=window.requestAnimationFrame.bind(window)
 THREE.Object3D.prototype.add=function(...objects){const r=originalAdd.apply(this,objects);for(const o of objects)if(o?.userData?.textureUnitScale&&captured.length<200){captured.push(o);entityGroup=this}return r}
-await import('./main-first-connection-panel.js');THREE.Object3D.prototype.add=originalAdd
+window.requestAnimationFrame=()=>0
+try{await import('./main-first-connection-panel.js')}finally{window.requestAnimationFrame=originalRAF;THREE.Object3D.prototype.add=originalAdd}
 let entityScene=entityGroup;while(entityScene?.parent)entityScene=entityScene.parent
 
 const BIRDS=DONUT_ELIGIBILITY.beads,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800
@@ -76,7 +79,7 @@ function syncPhysicsControls(){worker.postMessage({type:'controls',controls:{CEN
 if(donutEligible){const p=initialPositions.slice(),v=initialVelocities.slice();worker.postMessage({type:'init',birds:BIRDS,controls:{CENTRE:controls.CENTRE,SEPARATION:controls.SEPARATION,ALIGNEMENT:controls.ALIGNEMENT,COHESION:controls.COHESION,VITESSE:controls.VITESSE},positions:p.buffer,velocities:v.buffer},[p.buffer,v.buffer])}
 
 const gui=new GUI({title:'DONUT — TEST BATCH MOBILE'});gui.add(controls,'BOUNDS',.1,1,.01);gui.add(controls,'CENTRE',0,10,.1).onChange(syncPhysicsControls);gui.add(controls,'SEPARATION',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'ALIGNEMENT',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'COHESION',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'CAMERA',200,1200,10).onChange(v=>{camera.position.z=v;camera.lookAt(0,0,0)});gui.add(controls,'TAILLE',.2,5,.1).onChange(v=>{const s=v/.90;for(let i=0;i<BIRDS;i++){roots[i].scale.copy(captured[i%captured.length].scale).multiplyScalar(s);overlayRoots[i].scale.copy(roots[i].scale)}});gui.add(controls,'VITESSE',.05,2,.05).onChange(syncPhysicsControls)
-const status=document.createElement('div');status.textContent=`DONUT VALIDÉ — ${donutEligible?'ÉLIGIBLE':'NON ÉLIGIBLE'} · 500 billes · 30 / 8 / 60 · INSTANCING MOBILE`;Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
+const status=document.createElement('div');status.textContent=`DONUT VALIDÉ — ${donutEligible?'ÉLIGIBLE':'NON ÉLIGIBLE'} · 500 billes · 30 / 8 / 60 · INSTANCING MOBILE · ENTITY SOURCE RAF OFF`;Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
 const diag=document.createElement('pre');Object.assign(diag.style,{position:'fixed',right:'14px',bottom:'12px',margin:0,padding:'10px 12px',background:'rgba(0,0,0,.62)',color:'#fff',font:'12px monospace',lineHeight:'1.45',pointerEvents:'none',zIndex:9999});document.body.appendChild(diag)
 const startedAt=performance.now()
 function renderInterpolated(now){if(!hasSnapshot)return;const a=Math.min(1,Math.max(0,(now-interpolationStart)/interpolationDuration));for(let i=0;i<BIRDS;i++){const q=i*3;renderPositions[q]=fromPositions[q]+(toPositions[q]-fromPositions[q])*a;renderPositions[q+1]=fromPositions[q+1]+(toPositions[q+1]-fromPositions[q+1])*a;renderPositions[q+2]=fromPositions[q+2]+(toPositions[q+2]-fromPositions[q+2])*a}updateInstances()}
