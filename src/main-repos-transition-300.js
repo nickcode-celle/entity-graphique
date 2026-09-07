@@ -4,8 +4,10 @@ import {createEntityBeadTemplates,addEntityLights} from './entity-bead-factory.j
 
 // DONUT validé : 500 billes, 30 / 8 / 60 inchangés.
 // Aucun import du moteur Entity : uniquement une factory visuelle légère et réutilisable.
+// Les géométries de la factory sont en unité 1 ; facteur visuel 6 pour retrouver
+// exactement l'échelle des billes Entity historiques avec TAILLE 2.2.
 const DONUT_ELIGIBILITY={beads:500,reposAcquired:true,emotionalTrigger:'JOIE',domains:{PERSONNALITE:61,RELATION:62,GOUTS:63,OPINIONS_VALEURS:61,CONNAISSANCES:62,MONDE_PROPRE:52,HISTOIRE_VECUE:48,CAPACITES:44}}
-const BIRDS=500,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800
+const BIRDS=500,REFERENCE_BIRDS=32*32,REFERENCE_BOUNDS=800,ENTITY_VISUAL_UNIT=6
 const controls={BOUNDS:.51,CENTRE:4.9,SEPARATION:30,ALIGNEMENT:8,COHESION:60,CAMERA:840,TAILLE:2.2,VITESSE:.35}
 const templates=createEntityBeadTemplates(200)
 function currentBounds(){return REFERENCE_BOUNDS*Math.cbrt(BIRDS/REFERENCE_BIRDS)*controls.BOUNDS}
@@ -25,7 +27,7 @@ const material=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.38,meta
 const dummy=new THREE.Object3D()
 for(const d of familyDefs.values()){const m=new THREE.InstancedMesh(d.geometry,material,d.items.length);m.frustumCulled=false;m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(m);d.mesh=m;for(let k=0;k<d.items.length;k++){const i=d.items[k],t=templates[i%templates.length];m.setColorAt(k,t.color)}if(m.instanceColor)m.instanceColor.needsUpdate=true}
 for(let i=0;i<BIRDS;i++){const q=i*3,px=Math.random()*startBounds-startHalf,py=Math.random()*startBounds-startHalf,pz=Math.random()*startBounds-startHalf;initialPositions[q]=renderPositions[q]=px;initialPositions[q+1]=renderPositions[q+1]=py;initialPositions[q+2]=renderPositions[q+2]=pz;initialVelocities[q]=(Math.random()-.5)*10;initialVelocities[q+1]=(Math.random()-.5)*10;initialVelocities[q+2]=(Math.random()-.5)*10}
-function updateInstances(){for(let i=0;i<BIRDS;i++){const q=i*3;dummy.position.set(renderPositions[q],renderPositions[q+1],renderPositions[q+2]);dummy.scale.setScalar(controls.TAILLE);dummy.updateMatrix();beadFamily[i].mesh.setMatrixAt(beadSlot[i],dummy.matrix)}for(const d of familyDefs.values())d.mesh.instanceMatrix.needsUpdate=true}
+function updateInstances(){const visualScale=controls.TAILLE*ENTITY_VISUAL_UNIT;for(let i=0;i<BIRDS;i++){const q=i*3;dummy.position.set(renderPositions[q],renderPositions[q+1],renderPositions[q+2]);dummy.scale.setScalar(visualScale);dummy.updateMatrix();beadFamily[i].mesh.setMatrixAt(beadSlot[i],dummy.matrix)}for(const d of familyDefs.values())d.mesh.instanceMatrix.needsUpdate=true}
 updateInstances()
 
 const worker=new Worker(new URL('./donut-physics-worker.js',import.meta.url),{type:'module'}),snapshotQueue=[]
@@ -36,7 +38,7 @@ function syncPhysicsControls(){worker.postMessage({type:'controls',controls:{CEN
 if(donutEligible){const p=initialPositions.slice(),v=initialVelocities.slice();worker.postMessage({type:'init',birds:BIRDS,controls:{CENTRE:controls.CENTRE,SEPARATION:controls.SEPARATION,ALIGNEMENT:controls.ALIGNEMENT,COHESION:controls.COHESION,VITESSE:controls.VITESSE},positions:p.buffer,velocities:v.buffer},[p.buffer,v.buffer])}
 
 const gui=new GUI({title:'DONUT — FACTORY MOBILE'});gui.add(controls,'BOUNDS',.1,1,.01);gui.add(controls,'CENTRE',0,10,.1).onChange(syncPhysicsControls);gui.add(controls,'SEPARATION',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'ALIGNEMENT',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'COHESION',0,100,1).onChange(syncPhysicsControls);gui.add(controls,'CAMERA',200,1200,10).onChange(v=>{camera.position.z=v;camera.lookAt(0,0,0)});gui.add(controls,'TAILLE',.2,5,.1);gui.add(controls,'VITESSE',.05,2,.05).onChange(syncPhysicsControls)
-const status=document.createElement('div');status.textContent='DONUT VALIDÉ — 500 billes · 30 / 8 / 60 · FACTORY SANS MOTEUR ENTITY';Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
+const status=document.createElement('div');status.textContent='DONUT VALIDÉ — 500 billes · 30 / 8 / 60 · FACTORY SANS MOTEUR ENTITY · ÉCHELLE ENTITY';Object.assign(status.style,{position:'fixed',left:'14px',bottom:'12px',color:'rgba(255,255,255,.62)',font:'12px Arial',pointerEvents:'none'});document.body.appendChild(status)
 const diag=document.createElement('pre');Object.assign(diag.style,{position:'fixed',right:'14px',bottom:'12px',margin:0,padding:'10px 12px',background:'rgba(0,0,0,.62)',color:'#fff',font:'12px monospace',lineHeight:'1.45',pointerEvents:'none',zIndex:9999});document.body.appendChild(diag)
 const startedAt=performance.now();let playbackStartWall=0,playbackStartPhysics=0
 function renderBuffered(now){if(snapshotQueue.length<2)return;if(!playbackStartWall){playbackStartWall=now;playbackStartPhysics=Math.max(snapshotQueue[0].t,physicsClockMs-PLAYBACK_DELAY_MS)}let target=playbackStartPhysics+(now-playbackStartWall),newest=snapshotQueue[snapshotQueue.length-1].t;if(target>newest){playbackStartWall=now;playbackStartPhysics=Math.max(snapshotQueue[0].t,newest-16.7);target=playbackStartPhysics}while(snapshotQueue.length>2&&snapshotQueue[1].t<=target)snapshotQueue.shift();const a=snapshotQueue[0],b=snapshotQueue[1];if(!a||!b)return;const span=Math.max(1e-6,b.t-a.t),f=Math.min(1,Math.max(0,(target-a.t)/span));for(let i=0;i<renderPositions.length;i++)renderPositions[i]=a.p[i]+(b.p[i]-a.p[i])*f;updateInstances()}
