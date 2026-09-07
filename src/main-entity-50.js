@@ -121,7 +121,6 @@ function initMarbleRenderBatches(){
     batch.receiveShadow=true
     batch.frustumCulled=false
     batch.perObjectFrustumCulled=true
-    batch.layers.enable(2)
     const geometryIds=new Map()
     for(const g of geometries)geometryIds.set(g,batch.addGeometry(g))
     entityGroup.add(batch)
@@ -137,7 +136,9 @@ function initMarbleRenderBatches(){
   }
   marbleRenderBatches=records
 }
+let batchSyncMs=0
 function syncMarbleRenderBatches(){
+  const t=performance.now()
   if(!marbleRenderBatches)initMarbleRenderBatches()
   for(const o of marbleRenderBatches){
     o.updateMatrix()
@@ -147,28 +148,14 @@ function syncMarbleRenderBatches(){
     const hex=o.material.color.getHex()
     if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}
   }
+  batchSyncMs=performance.now()-t
 }
+const batchSyncLabel=document.createElement('div')
+Object.assign(batchSyncLabel.style,{position:'fixed',right:'14px',top:'430px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'6px 8px',font:'12px/1.4 monospace',pointerEvents:'none'})
+batchSyncLabel.textContent='BATCH SYNC'
+document.body.appendChild(batchSyncLabel)
+setInterval(()=>{batchSyncLabel.textContent='BATCH SYNC '+batchSyncMs.toFixed(2)+' ms'},500)
 
-const depthPrepassMaterial=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true})
-const depthClearColor=new THREE.Color()
-function renderEntityDepthPrepass(){
-  const previousOverride=scene.overrideMaterial
-  const previousAutoUpdate=renderer.shadowMap.autoUpdate
-  const previousClearAlpha=renderer.getClearAlpha()
-  renderer.getClearColor(depthClearColor)
-  const savedClearColor=depthClearColor.clone()
-  if(scene.background&&scene.background.isColor)renderer.setClearColor(scene.background,1)
-  else renderer.setClearColor(0x000000,0)
-  renderer.setRenderTarget(finalComposer.readBuffer)
-  renderer.clear(true,true,true)
-  renderer.shadowMap.autoUpdate=false
-  scene.overrideMaterial=depthPrepassMaterial
-  camera.layers.set(2)
-  renderer.render(scene,camera)
-  scene.overrideMaterial=previousOverride
-  renderer.shadowMap.autoUpdate=previousAutoUpdate
-  renderer.setClearColor(savedClearColor,previousClearAlpha)
-}
 
 const fract=x=>x-Math.floor(x),hash=(x,y,z)=>fract(Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453)
 function noise(x,y,z){const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),fx=x-X,fy=y-Y,fz=z-Z,s=t=>t*t*(3-2*t),sx=s(fx),sy=s(fy),sz=s(fz),h=(a,b,c)=>hash(X+a,Y+b,Z+c),a=THREE.MathUtils.lerp(h(0,0,0),h(1,0,0),sx),b=THREE.MathUtils.lerp(h(0,1,0),h(1,1,0),sx),c=THREE.MathUtils.lerp(h(0,0,1),h(1,0,1),sx),d=THREE.MathUtils.lerp(h(0,1,1),h(1,1,1),sx);return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a,b,sy),THREE.MathUtils.lerp(c,d,sy),sz)*2-1}
@@ -247,5 +234,5 @@ const label=document.createElement('div');label.textContent='ENTITY — 50 % sur
 
 const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5
 const profiler={frame:0,knowledge:0,bloom:0,final:0,samples:0,last:performance.now()};const profilerLabel=document.createElement('div');Object.assign(profilerLabel.style,{position:'fixed',right:'14px',top:'12px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'8px 10px',font:'12px/1.45 monospace',whiteSpace:'pre',pointerEvents:'none'});document.body.appendChild(profilerLabel);function profilerTick(frameStart,knowledgeMs,bloomMs,finalMs){profiler.frame+=performance.now()-frameStart;profiler.knowledge+=knowledgeMs;profiler.bloom+=bloomMs;profiler.final+=finalMs;profiler.samples++;const now=performance.now();if(now-profiler.last>=1000){const n=profiler.samples||1,frame=profiler.frame/n,knowledge=profiler.knowledge/n,bloom=profiler.bloom/n,final=profiler.final/n;profilerLabel.textContent='ENTITY PROFILER · '+BODY_COUNT+' billes\nframe '+frame.toFixed(2)+' ms · '+(1000/frame).toFixed(1)+' fps\nknowledge '+knowledge.toFixed(2)+' ms\nbloom '+bloom.toFixed(2)+' ms\nfinal '+final.toFixed(2)+' ms\nrender total '+(bloom+final).toFixed(2)+' ms\ndraw calls '+renderer.info.render.calls+' · tris '+renderer.info.render.triangles;profiler.frame=profiler.knowledge=profiler.bloom=profiler.final=profiler.samples=0;profiler.last=now}}
-function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}syncMarbleRenderBatches();scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;renderEntityDepthPrepass();camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.passes[0].clear=false;const finalStart=performance.now();finalComposer.render(dt);finalComposer.passes[0].clear=true;const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
+function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}syncMarbleRenderBatches();scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);bloomComposer.setSize(innerWidth,innerHeight);finalComposer.setSize(innerWidth,innerHeight)})
