@@ -26,33 +26,34 @@ jobs:
           s=p.read_text()
           old='const BODY_COUNT=2000,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50'
           new="const TEST_COUNTS=[300,500,750,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50"
-          if old not in s: raise SystemExit('STOP: BODY_COUNT block not found')
+          if old not in s:
+              raise SystemExit('STOP: BODY_COUNT block not found')
           s=s.replace(old,new,1)
-          # For this capacity test, keep exact ENTITY engine but disable gorilla morph target: test spherical ENTITY only.
           marker='const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())'
-          if marker not in s: raise SystemExit('STOP: gorilla target block not found')
+          if marker not in s:
+              raise SystemExit('STOP: gorilla target block not found')
           s=s.replace(marker,'const sphereCenters=makeBodyCenters(),gorillaCenters=sphereCenters,centers=sphereCenters.map(p=>p.clone())',1)
-          # makeBodyCenters currently hardcodes 2000 shell counts; replace with population-proportional Fibonacci volume shells while preserving radius growth.
           start=s.index('function makeBodyCenters(){')
           end=s.index('\n}',start)+2
-          oldbody=s[start:end]
-          newbody="""function makeBodyCenters(){
-  const populationScale=Math.cbrt(BODY_COUNT/200),p=[new THREE.Vector3()]
-  const counts=[.06,.16,.28,.50].map(x=>Math.floor((BODY_COUNT-1)*x))
-  counts[3]=BODY_COUNT-1-counts[0]-counts[1]-counts[2]
-  p.push(
-    ...fibonacciShell(counts[0],.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),
-    ...fibonacciShell(counts[1],1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),
-    ...fibonacciShell(counts[2],2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),
-    ...fibonacciShell(counts[3],2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))
-  )
-  return p
-}"""
+          newbody=(
+              "function makeBodyCenters(){\n"
+              "  const populationScale=Math.cbrt(BODY_COUNT/200),p=[new THREE.Vector3()]\n"
+              "  const counts=[.06,.16,.28,.50].map(x=>Math.floor((BODY_COUNT-1)*x))\n"
+              "  counts[3]=BODY_COUNT-1-counts[0]-counts[1]-counts[2]\n"
+              "  p.push(\n"
+              "    ...fibonacciShell(counts[0],.95*populationScale,.18,new THREE.Vector3(.22,-.14,.31)),\n"
+              "    ...fibonacciShell(counts[1],1.58*populationScale,1.07,new THREE.Vector3(-.31,.27,.11)),\n"
+              "    ...fibonacciShell(counts[2],2.18*populationScale,2.16,new THREE.Vector3(.17,.39,-.26)),\n"
+              "    ...fibonacciShell(counts[3],2.82*populationScale,2.91,new THREE.Vector3(-.21,-.28,.37))\n"
+              "  )\n"
+              "  return p\n"
+              "}"
+          )
           s=s[:start]+newbody+s[end:]
           p.write_text(s)
           PY
           cat > capacity-test.html <<'HTML'
-          <!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ENTITY Capacity Test</title><style>html,body{margin:0;background:#000;color:#fff;font-family:system-ui}#panel{position:fixed;z-index:20;top:12px;left:12px;background:#000b;padding:10px;border-radius:8px}button{margin:3px;padding:7px 9px}#fps{font-weight:700;margin-top:7px}</style></head><body><div id="panel"><div>ENTITY — test capacité</div><div id="buttons"></div><div id="fps">FPS: …</div></div><script>const counts=[300,500,750,1000,1500,2000],q=new URLSearchParams(location.search),n=Number(q.get('balls'))||300,b=document.getElementById('buttons');for(const c of counts){const x=document.createElement('button');x.textContent=c;x.onclick=()=>location.href='capacity-test.html?balls='+c;b.appendChild(x)}let frames=0,last=performance.now();function tick(t){frames++;if(t-last>=1000){document.getElementById('fps').textContent='FPS: '+Math.round(frames*1000/(t-last))+' · '+n+' billes';frames=0;last=t}requestAnimationFrame(tick)}requestAnimationFrame(tick)</script><script type="module">const q=new URLSearchParams(location.search);location.search=q.toString();import('/src/main-entity-50.js'+location.search)</script></body></html>
+          <!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ENTITY Capacity Test</title><style>html,body{margin:0;background:#000;color:#fff;font-family:system-ui}#panel{position:fixed;z-index:20;top:12px;left:12px;background:#000b;padding:10px;border-radius:8px}button{margin:3px;padding:7px 9px}#fps{font-weight:700;margin-top:7px}</style></head><body><div id="panel"><div>ENTITY — test capacité</div><div id="buttons"></div><div id="fps">FPS: …</div></div><script>const counts=[300,500,750,1000,1500,2000],q=new URLSearchParams(location.search),n=Number(q.get('balls'))||300,b=document.getElementById('buttons');for(const c of counts){const x=document.createElement('button');x.textContent=c;x.onclick=()=>location.href='capacity-test.html?balls='+c;b.appendChild(x)}let frames=0,last=performance.now();function tick(t){frames++;if(t-last>=1000){document.getElementById('fps').textContent='FPS: '+Math.round(frames*1000/(t-last))+' · '+n+' billes';frames=0;last=t}requestAnimationFrame(tick)}requestAnimationFrame(tick)</script><script type="module">import('/src/main-entity-50.js'+location.search)</script></body></html>
           HTML
       - name: Commit
         shell: bash
