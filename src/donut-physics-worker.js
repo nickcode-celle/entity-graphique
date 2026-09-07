@@ -53,9 +53,11 @@ function loop(){
   if(dt>1)dt=1
   if(dt<1/240)dt=1/240
   last=now
+  const computeStart=performance.now()
   stepDonut(dt)
+  const computeMs=performance.now()-computeStart
   const snapshot=new Float64Array(positions)
-  postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:dt*1000},[snapshot.buffer])
+  postMessage({type:'snapshot',positions:snapshot.buffer,intervalMs:dt*1000,computeMs},[snapshot.buffer])
   setTimeout(loop,0)
 }
 
