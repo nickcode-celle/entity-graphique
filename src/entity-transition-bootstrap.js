@@ -40,6 +40,7 @@ THREE.Object3D.prototype.add=function(...objects){
 }
 
 const originalRender=THREE.WebGLRenderer.prototype.render
+let renderHookActive=true
 THREE.WebGLRenderer.prototype.render=function(scene,camera){
   if(!capturedScene && marbles.length>=200){
     capturedScene=scene
@@ -53,10 +54,16 @@ THREE.WebGLRenderer.prototype.render=function(scene,camera){
 await import('./main-entity-50.js')
 
 THREE.Object3D.prototype.add=originalAdd
-THREE.WebGLRenderer.prototype.render=originalRender
+
+function restoreRenderHook(){
+  if(!renderHookActive)return
+  THREE.WebGLRenderer.prototype.render=originalRender
+  renderHookActive=false
+}
 
 function waitForScene(){
   if(capturedScene&&capturedCamera&&capturedRenderer&&marbles.length>=200){
+    restoreRenderHook()
     for(let i=0;i<marbles.length;i++){
       marbles[i].userData.serialId=i
       previousWorld[i]=new THREE.Vector3()
