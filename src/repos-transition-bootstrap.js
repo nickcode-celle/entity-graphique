@@ -15,13 +15,15 @@ THREE.InstancedMesh.prototype.setMatrixAt=function(index,matrix){
 }
 
 const originalRender=THREE.WebGLRenderer.prototype.render
+let renderHookActive=true
 THREE.WebGLRenderer.prototype.render=function(scene,camera){
   if(!capturedCamera)capturedCamera=camera
   return originalRender.call(this,scene,camera)
 }
 
 await import('./main-repos-transition-300.js')
-THREE.WebGLRenderer.prototype.render=originalRender
+
+function restoreRenderHook(){if(renderHookActive){THREE.WebGLRenderer.prototype.render=originalRender;renderHookActive=false}}
 
 function forceValidatedRepos(){
   const wanted={SEPARATION:'40',ALIGNEMENT:'1',COHESION:'60',VITESSE:'0.35'}
@@ -43,6 +45,7 @@ const timer=setInterval(()=>{tries++;if(forceValidatedRepos()||tries>100)clearIn
 
 function expose(){
   if(capturedCamera&&batches>=2){
+    restoreRenderHook()
     window.reposTransitionAPI={
       getTarget(serialId){
         const i=((serialId%SERIAL_COUNT)+SERIAL_COUNT)%SERIAL_COUNT
