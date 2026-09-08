@@ -1,4 +1,4 @@
-name: Open 1000-ball gorilla silhouette
+name: Fix 1000-ball gorilla count
 
 on:
   push:
@@ -18,56 +18,27 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Open gorilla skeleton masses without changing ENTITY engine
+      - name: Correct gorilla skeleton count only
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          start=s.index('function makeGorillaCenters(){')
-          end=s.index('\n\nconst personality=',start)
-          gorilla="""function makeGorillaCenters(){
-            const pts=[],S=1.72
-            function addEllipsoidSurface(count,cx,cy,cz,rx,ry,rz,rotZ=0,phase=0){
-              const c=Math.cos(rotZ),sn=Math.sin(rotZ)
-              for(let i=0;i<count;i++){
-                const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),a=i*goldenAngle+phase
-                const x=rx*rr*Math.cos(a),yy=ry*y,z=rz*rr*Math.sin(a)
-                const xx=x*c-yy*sn,yyy=x*sn+yy*c
-                pts.push(new THREE.Vector3((cx+xx)*S,(cy+yyy)*S,(cz+z)*S))
-              }
-            }
-            addEllipsoidSurface(190,0,.15,0,1.18,1.30,.72,0,.10)
-            addEllipsoidSurface(55,-1.48,1.12,0,.78,.70,.62,-.20,.35)
-            addEllipsoidSurface(55,1.48,1.12,0,.78,.70,.62,.20,.70)
-            addEllipsoidSurface(70,0,-1.18,.04,1.02,.58,.66,0,1.05)
-            addEllipsoidSurface(90,0,2.55,-.03,.67,.75,.61,0,1.40)
-            addEllipsoidSurface(35,0,2.22,.58,.50,.34,.48,0,1.75)
-            addEllipsoidSurface(75,-2.18,.25,.03,.48,1.02,.50,-.28,2.10)
-            addEllipsoidSurface(75,2.18,.25,.03,.48,1.02,.50,.28,2.45)
-            addEllipsoidSurface(75,-2.72,-1.42,.24,.47,1.12,.50,-.10,2.80)
-            addEllipsoidSurface(75,2.72,-1.42,.24,.47,1.12,.50,.10,3.15)
-            addEllipsoidSurface(35,-.82,-2.05,.02,.50,.72,.57,-.04,3.50)
-            addEllipsoidSurface(35,.82,-2.05,.02,.50,.72,.57,.04,3.85)
-            addEllipsoidSurface(25,-1.00,-2.82,.48,.70,.28,.86,0,4.20)
-            addEllipsoidSurface(25,1.00,-2.82,.48,.70,.28,.86,0,4.55)
-            addEllipsoidSurface(45,-3.02,-2.48,.42,.68,.42,.72,0,4.90)
-            addEllipsoidSurface(45,3.02,-2.48,.42,.68,.42,.72,0,5.25)
-            if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
-            return pts
-          }"""
-          gorilla='\n'.join(line[10:] if line.startswith('          ') else line for line in gorilla.splitlines())
-          s=s[:start]+gorilla+s[end:]
+          old="addEllipsoidSurface(45,3.02,-2.48,.42,.68,.42,.72,0,5.25)"
+          new="addEllipsoidSurface(40,3.02,-2.48,.42,.68,.42,.72,0,5.25)"
+          if old not in s:
+              raise SystemExit('STOP: gorilla hand count anchor not found')
+          s=s.replace(old,new,1)
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit gorilla
+      - name: Commit exact 1000-ball count
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Open 1000-ball gorilla silhouette"
+          git commit -m "Fix gorilla skeleton to exactly 1000 balls"
           git push origin HEAD:entity-double-helix-test-v1
