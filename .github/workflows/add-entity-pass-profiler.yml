@@ -1,4 +1,4 @@
-name: Profile ENTITY shadow cost
+name: Build 1000-ball gorilla
 
 on:
   push:
@@ -18,41 +18,73 @@ jobs:
         with:
           ref: entity-double-helix-test-v1
           fetch-depth: 0
-      - name: Add shadow cost profiler without changing rendered output
+      - name: Build large spaced gorilla with existing ENTITY skeleton method
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          if 'SHADOW COST' in s:
-              raise SystemExit('STOP: shadow profiler already present')
-          anchor="renderer.shadowMap.type=THREE.PCFSoftShadowMap\n"
-          if anchor not in s:
-              raise SystemExit('STOP: shadow renderer anchor not found')
-          addition="""renderer.shadowMap.autoUpdate=false
-          let shadowRenderMs=0,shadowProfileFrames=0
-          const shadowProfileLabel=document.createElement('div')
-          Object.assign(shadowProfileLabel.style,{position:'fixed',right:'14px',top:'470px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'6px 8px',font:'12px/1.4 monospace',pointerEvents:'none'})
-          shadowProfileLabel.textContent='SHADOW COST'
-          document.body.appendChild(shadowProfileLabel)
-          setInterval(()=>{const n=Math.max(1,shadowProfileFrames);shadowProfileLabel.textContent='SHADOW COST '+(shadowRenderMs/n).toFixed(2)+' ms';shadowRenderMs=0;shadowProfileFrames=0},500)
-          """
-          s=s.replace(anchor,anchor+addition,1)
-          render_anchor="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);"
-          if render_anchor not in s:
-              raise SystemExit('STOP: final render anchor not found')
-          replacement="scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);renderer.shadowMap.needsUpdate=true;const shadowStart=performance.now();const finalStart=shadowStart;finalComposer.render(dt);shadowRenderMs+=performance.now()-shadowStart;shadowProfileFrames++;"
-          s=s.replace(render_anchor,replacement,1)
+
+          # Restore normal rendering after profiling.
+          s=re.sub(r"renderer\.shadowMap\.autoUpdate=false\nlet shadowRenderMs=0,shadowProfileFrames=0\nconst shadowProfileLabel=.*?setInterval\(\(\)=>\{const n=Math\.max\(1,shadowProfileFrames\);shadowProfileLabel\.textContent='SHADOW COST '\+\(shadowRenderMs/n\)\.toFixed\(2\)\+' ms';shadowRenderMs=0;shadowProfileFrames=0\},500\)\n",'',s,flags=re.S)
+          s=s.replace("scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);renderer.shadowMap.needsUpdate=true;const shadowStart=performance.now();const finalStart=shadowStart;finalComposer.render(dt);shadowRenderMs+=performance.now()-shadowStart;shadowProfileFrames++;",
+                      "scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);")
+
+          # Remove only the temporary batch-sync measurement, keep the batching optimization itself.
+          s=s.replace('let batchSyncMs=0\n','')
+          s=s.replace('  const t=performance.now()\n','',1)
+          s=s.replace('  batchSyncMs=performance.now()-t\n','',1)
+          s=re.sub(r"const batchSyncLabel=document\.createElement\('div'\).*?setInterval\(\(\)=>\{batchSyncLabel\.textContent='BATCH SYNC '\+batchSyncMs\.toFixed\(2\)\+' ms'\},500\)\n",'',s,flags=re.S)
+
+          # 1000 balls by default.
+          s=s.replace('const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:2000,','const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1000,',1)
+
+          # Replace the 2000-ball volumetric gorilla with a 1000-ball larger surface skeleton.
+          start=s.index('function makeGorillaCenters(){')
+          end=s.index('\n\nconst personality=',start)
+          gorilla=r'''function makeGorillaCenters(){
+  const pts=[],S=1.58
+  function addEllipsoidSurface(count,cx,cy,cz,rx,ry,rz,rotZ=0,phase=0){
+    const c=Math.cos(rotZ),sn=Math.sin(rotZ)
+    for(let i=0;i<count;i++){
+      const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),a=i*goldenAngle+phase
+      const x=rx*rr*Math.cos(a),yy=ry*y,z=rz*rr*Math.sin(a)
+      const xx=x*c-yy*sn,yyy=x*sn+yy*c
+      pts.push(new THREE.Vector3((cx+xx)*S,(cy+yyy)*S,(cz+z)*S))
+    }
+  }
+  addEllipsoidSurface(210,0,.15,0,1.35,1.45,.82,0,.10)
+  addEllipsoidSurface(70,-1.38,1.05,0,1.05,.90,.76,-.18,.35)
+  addEllipsoidSurface(70, 1.38,1.05,0,1.05,.90,.76, .18,.70)
+  addEllipsoidSurface(80,0,-1.05,.05,1.20,.72,.76,0,1.05)
+  addEllipsoidSurface(90,0,2.12,-.02,.78,.86,.70,0,1.40)
+  addEllipsoidSurface(40,0,1.78,.62,.58,.42,.55,0,1.75)
+  addEllipsoidSurface(85,-2.00,.15,.03,.70,1.18,.62,-.22,2.10)
+  addEllipsoidSurface(85, 2.00,.15,.03,.70,1.18,.62, .22,2.45)
+  addEllipsoidSurface(65,-2.38,-1.25,.28,.64,1.08,.62,-.08,2.80)
+  addEllipsoidSurface(65, 2.38,-1.25,.28,.64,1.08,.62, .08,3.15)
+  addEllipsoidSurface(45,-.72,-1.90,.02,.68,.82,.70,0,3.50)
+  addEllipsoidSurface(45, .72,-1.90,.02,.68,.82,.70,0,3.85)
+  addEllipsoidSurface(25,-.82,-2.58,.48,.78,.34,1.00,0,4.20)
+  addEllipsoidSurface(25, .82,-2.58,.48,.78,.34,1.00,0,4.55)
+  if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  return pts
+}'''
+          s=s[:start]+gorilla+s[end:]
+          s=s.replace('const sphereCenters=makeBodyCenters(),gorillaCenters=sphereCenters,centers=sphereCenters.map(p=>p.clone())',
+                      'const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())',1)
+
           p.write_text(s)
           PY
       - name: Install and build before commit
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit shadow profiler
+      - name: Commit gorilla
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Profile exact ENTITY shadow render cost"
+          git commit -m "Build large spaced 1000-ball gorilla"
           git push origin HEAD:entity-double-helix-test-v1
