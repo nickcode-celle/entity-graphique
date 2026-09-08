@@ -85,7 +85,7 @@ function makeGorillaCenters(){
   addEllipsoidSurface(25,-1.00,-2.82,.48,.70,.28,.86,0,4.20)
   addEllipsoidSurface(25,1.00,-2.82,.48,.70,.28,.86,0,4.55)
   addEllipsoidSurface(45,-3.02,-2.48,.42,.68,.42,.72,0,4.90)
-  addEllipsoidSurface(45,3.02,-2.48,.42,.68,.42,.72,0,5.25)
+  addEllipsoidSurface(40,3.02,-2.48,.42,.68,.42,.72,0,5.25)
   if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
