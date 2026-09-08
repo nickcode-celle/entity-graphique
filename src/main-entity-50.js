@@ -60,7 +60,7 @@ function makeBodyCenters(){
   return p
 }
 function makeGorillaCenters(){
-  const pts=[],S=1.58
+  const pts=[],S=1.72
   function addEllipsoidSurface(count,cx,cy,cz,rx,ry,rz,rotZ=0,phase=0){
     const c=Math.cos(rotZ),sn=Math.sin(rotZ)
     for(let i=0;i<count;i++){
@@ -70,20 +70,22 @@ function makeGorillaCenters(){
       pts.push(new THREE.Vector3((cx+xx)*S,(cy+yyy)*S,(cz+z)*S))
     }
   }
-  addEllipsoidSurface(210,0,.15,0,1.35,1.45,.82,0,.10)
-  addEllipsoidSurface(70,-1.38,1.05,0,1.05,.90,.76,-.18,.35)
-  addEllipsoidSurface(70,1.38,1.05,0,1.05,.90,.76,.18,.70)
-  addEllipsoidSurface(80,0,-1.05,.05,1.20,.72,.76,0,1.05)
-  addEllipsoidSurface(90,0,2.12,-.02,.78,.86,.70,0,1.40)
-  addEllipsoidSurface(40,0,1.78,.62,.58,.42,.55,0,1.75)
-  addEllipsoidSurface(85,-2.00,.15,.03,.70,1.18,.62,-.22,2.10)
-  addEllipsoidSurface(85,2.00,.15,.03,.70,1.18,.62,.22,2.45)
-  addEllipsoidSurface(65,-2.38,-1.25,.28,.64,1.08,.62,-.08,2.80)
-  addEllipsoidSurface(65,2.38,-1.25,.28,.64,1.08,.62,.08,3.15)
-  addEllipsoidSurface(45,-.72,-1.90,.02,.68,.82,.70,0,3.50)
-  addEllipsoidSurface(45,.72,-1.90,.02,.68,.82,.70,0,3.85)
-  addEllipsoidSurface(25,-.82,-2.58,.48,.78,.34,1.00,0,4.20)
-  addEllipsoidSurface(25,.82,-2.58,.48,.78,.34,1.00,0,4.55)
+  addEllipsoidSurface(190,0,.15,0,1.18,1.30,.72,0,.10)
+  addEllipsoidSurface(55,-1.48,1.12,0,.78,.70,.62,-.20,.35)
+  addEllipsoidSurface(55,1.48,1.12,0,.78,.70,.62,.20,.70)
+  addEllipsoidSurface(70,0,-1.18,.04,1.02,.58,.66,0,1.05)
+  addEllipsoidSurface(90,0,2.55,-.03,.67,.75,.61,0,1.40)
+  addEllipsoidSurface(35,0,2.22,.58,.50,.34,.48,0,1.75)
+  addEllipsoidSurface(75,-2.18,.25,.03,.48,1.02,.50,-.28,2.10)
+  addEllipsoidSurface(75,2.18,.25,.03,.48,1.02,.50,.28,2.45)
+  addEllipsoidSurface(75,-2.72,-1.42,.24,.47,1.12,.50,-.10,2.80)
+  addEllipsoidSurface(75,2.72,-1.42,.24,.47,1.12,.50,.10,3.15)
+  addEllipsoidSurface(35,-.82,-2.05,.02,.50,.72,.57,-.04,3.50)
+  addEllipsoidSurface(35,.82,-2.05,.02,.50,.72,.57,.04,3.85)
+  addEllipsoidSurface(25,-1.00,-2.82,.48,.70,.28,.86,0,4.20)
+  addEllipsoidSurface(25,1.00,-2.82,.48,.70,.28,.86,0,4.55)
+  addEllipsoidSurface(45,-3.02,-2.48,.42,.68,.42,.72,0,4.90)
+  addEllipsoidSurface(45,3.02,-2.48,.42,.68,.42,.72,0,5.25)
   if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
