@@ -8,19 +8,12 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js'
 import './style.css'
 
-const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:2000,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1000,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
 renderer.shadowMap.enabled=true
 renderer.shadowMap.type=THREE.PCFSoftShadowMap
-renderer.shadowMap.autoUpdate=false
-let shadowRenderMs=0,shadowProfileFrames=0
-const shadowProfileLabel=document.createElement('div')
-Object.assign(shadowProfileLabel.style,{position:'fixed',right:'14px',top:'470px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'6px 8px',font:'12px/1.4 monospace',pointerEvents:'none'})
-shadowProfileLabel.textContent='SHADOW COST'
-document.body.appendChild(shadowProfileLabel)
-setInterval(()=>{const n=Math.max(1,shadowProfileFrames);shadowProfileLabel.textContent='SHADOW COST '+(shadowRenderMs/n).toFixed(2)+' ms';shadowRenderMs=0;shadowProfileFrames=0},500)
 renderer.toneMapping=THREE.ACESFilmicToneMapping
 app.appendChild(renderer.domElement)
 
@@ -67,32 +60,31 @@ function makeBodyCenters(){
   return p
 }
 function makeGorillaCenters(){
-  const pts=[]
-  let seed=1
-  const rand=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
-  function addEllipsoid(count,cx,cy,cz,rx,ry,rz,rotZ=0){
+  const pts=[],S=1.58
+  function addEllipsoidSurface(count,cx,cy,cz,rx,ry,rz,rotZ=0,phase=0){
     const c=Math.cos(rotZ),sn=Math.sin(rotZ)
     for(let i=0;i<count;i++){
-      const z=rand()*2-1,a=rand()*Math.PI*2,rr=Math.sqrt(1-z*z),r=Math.cbrt(rand())
-      const x=rx*r*rr*Math.cos(a),y=ry*r*z,zz=rz*r*rr*Math.sin(a)
-      const xx=x*c-y*sn,yy=x*sn+y*c
-      pts.push(new THREE.Vector3(cx+xx,cy+yy,cz+zz))
+      const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),a=i*goldenAngle+phase
+      const x=rx*rr*Math.cos(a),yy=ry*y,z=rz*rr*Math.sin(a)
+      const xx=x*c-yy*sn,yyy=x*sn+yy*c
+      pts.push(new THREE.Vector3((cx+xx)*S,(cy+yyy)*S,(cz+z)*S))
     }
   }
-  addEllipsoid(420,0,.15,0,1.35,1.45,.82)
-  addEllipsoid(140,-1.38,1.05,0,1.05,.90,.76,-.18)
-  addEllipsoid(140, 1.38,1.05,0,1.05,.90,.76, .18)
-  addEllipsoid(160,0,-1.05,.05,1.20,.72,.76)
-  addEllipsoid(180,0,2.12,-.02,.78,.86,.70)
-  addEllipsoid(80,0,1.78,.62,.58,.42,.55)
-  addEllipsoid(170,-2.00,.15,.03,.70,1.18,.62,-.22)
-  addEllipsoid(170, 2.00,.15,.03,.70,1.18,.62, .22)
-  addEllipsoid(130,-2.38,-1.25,.28,.64,1.08,.62,-.08)
-  addEllipsoid(130, 2.38,-1.25,.28,.64,1.08,.62, .08)
-  addEllipsoid(90,-.72,-1.90,.02,.68,.82,.70)
-  addEllipsoid(90, .72,-1.90,.02,.68,.82,.70)
-  addEllipsoid(50,-.82,-2.58,.48,.78,.34,1.00)
-  addEllipsoid(50, .82,-2.58,.48,.78,.34,1.00)
+  addEllipsoidSurface(210,0,.15,0,1.35,1.45,.82,0,.10)
+  addEllipsoidSurface(70,-1.38,1.05,0,1.05,.90,.76,-.18,.35)
+  addEllipsoidSurface(70,1.38,1.05,0,1.05,.90,.76,.18,.70)
+  addEllipsoidSurface(80,0,-1.05,.05,1.20,.72,.76,0,1.05)
+  addEllipsoidSurface(90,0,2.12,-.02,.78,.86,.70,0,1.40)
+  addEllipsoidSurface(40,0,1.78,.62,.58,.42,.55,0,1.75)
+  addEllipsoidSurface(85,-2.00,.15,.03,.70,1.18,.62,-.22,2.10)
+  addEllipsoidSurface(85,2.00,.15,.03,.70,1.18,.62,.22,2.45)
+  addEllipsoidSurface(65,-2.38,-1.25,.28,.64,1.08,.62,-.08,2.80)
+  addEllipsoidSurface(65,2.38,-1.25,.28,.64,1.08,.62,.08,3.15)
+  addEllipsoidSurface(45,-.72,-1.90,.02,.68,.82,.70,0,3.50)
+  addEllipsoidSurface(45,.72,-1.90,.02,.68,.82,.70,0,3.85)
+  addEllipsoidSurface(25,-.82,-2.58,.48,.78,.34,1.00,0,4.20)
+  addEllipsoidSurface(25,.82,-2.58,.48,.78,.34,1.00,0,4.55)
+  if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
 
@@ -143,9 +135,7 @@ function initMarbleRenderBatches(){
   }
   marbleRenderBatches=records
 }
-let batchSyncMs=0
 function syncMarbleRenderBatches(){
-  const t=performance.now()
   if(!marbleRenderBatches)initMarbleRenderBatches()
   for(const o of marbleRenderBatches){
     o.updateMatrix()
@@ -155,13 +145,7 @@ function syncMarbleRenderBatches(){
     const hex=o.material.color.getHex()
     if(hex!==o.userData.renderBatchColor){batch.setColorAt(id,o.material.color);o.userData.renderBatchColor=hex}
   }
-  batchSyncMs=performance.now()-t
 }
-const batchSyncLabel=document.createElement('div')
-Object.assign(batchSyncLabel.style,{position:'fixed',right:'14px',top:'430px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'6px 8px',font:'12px/1.4 monospace',pointerEvents:'none'})
-batchSyncLabel.textContent='BATCH SYNC'
-document.body.appendChild(batchSyncLabel)
-setInterval(()=>{batchSyncLabel.textContent='BATCH SYNC '+batchSyncMs.toFixed(2)+' ms'},500)
 
 
 const fract=x=>x-Math.floor(x),hash=(x,y,z)=>fract(Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453)
@@ -192,7 +176,7 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),gorillaCenters=sphereCenters,centers=sphereCenters.map(p=>p.clone())
+const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())
 const GORILLA_MORPH_START=1,GORILLA_MORPH_DURATION=3
 function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-GORILLA_MORPH_START)/GORILLA_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],gorillaCenters[i],s);updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
@@ -241,5 +225,5 @@ const label=document.createElement('div');label.textContent='ENTITY — 50 % sur
 
 const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5
 const profiler={frame:0,knowledge:0,bloom:0,final:0,samples:0,last:performance.now()};const profilerLabel=document.createElement('div');Object.assign(profilerLabel.style,{position:'fixed',right:'14px',top:'12px',zIndex:9999,color:'#fff',background:'rgba(0,0,0,.68)',padding:'8px 10px',font:'12px/1.45 monospace',whiteSpace:'pre',pointerEvents:'none'});document.body.appendChild(profilerLabel);function profilerTick(frameStart,knowledgeMs,bloomMs,finalMs){profiler.frame+=performance.now()-frameStart;profiler.knowledge+=knowledgeMs;profiler.bloom+=bloomMs;profiler.final+=finalMs;profiler.samples++;const now=performance.now();if(now-profiler.last>=1000){const n=profiler.samples||1,frame=profiler.frame/n,knowledge=profiler.knowledge/n,bloom=profiler.bloom/n,final=profiler.final/n;profilerLabel.textContent='ENTITY PROFILER · '+BODY_COUNT+' billes\nframe '+frame.toFixed(2)+' ms · '+(1000/frame).toFixed(1)+' fps\nknowledge '+knowledge.toFixed(2)+' ms\nbloom '+bloom.toFixed(2)+' ms\nfinal '+final.toFixed(2)+' ms\nrender total '+(bloom+final).toFixed(2)+' ms\ndraw calls '+renderer.info.render.calls+' · tris '+renderer.info.render.triangles;profiler.frame=profiler.knowledge=profiler.bloom=profiler.final=profiler.samples=0;profiler.last=now}}
-function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}syncMarbleRenderBatches();scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);renderer.shadowMap.needsUpdate=true;const shadowStart=performance.now();const finalStart=shadowStart;finalComposer.render(dt);shadowRenderMs+=performance.now()-shadowStart;shadowProfileFrames++;const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
+function animate(){requestAnimationFrame(animate);passProfile.samples++;const frameStart=performance.now();const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateSkeletonMorph();nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);const knowledgeStart=performance.now();updateKnowledgeTrails(dt);const knowledgeMs=performance.now()-knowledgeStart;for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}syncMarbleRenderBatches();scene.background=bloomBackground;camera.layers.set(bloomLayer);const bloomStart=performance.now();bloomComposer.render(dt);const bloomMs=performance.now()-bloomStart;scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);const finalStart=performance.now();finalComposer.render(dt);const finalMs=performance.now()-finalStart;camera.layers.set(0);profilerTick(frameStart,knowledgeMs,bloomMs,finalMs)}animate()
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);bloomComposer.setSize(innerWidth,innerHeight);finalComposer.setSize(innerWidth,innerHeight)})
