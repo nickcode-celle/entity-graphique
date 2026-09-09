@@ -1,0 +1,43 @@
+name: Delay birth 10s and strengthen light fade
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: ['.github/workflows/entity-birth-10s-strong-fade.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Patch exact birth timing and light
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          s=s.replace('const t=now-birthStart\n  birthMarble.visible=false', 'const t=now-birthStart-10\n  birthMarble.visible=false')
+          s=s.replace("if(t<.8){", "if(t<0){\n    birthPoint.visible=false\n    birthLight.intensity=0\n    birthBurstMaterial.opacity=0\n    return\n  }else if(t<1.8){")
+          s=s.replace('const u=THREE.MathUtils.smoothstep(t,0,.8)', 'const u=THREE.MathUtils.smoothstep(t,0,1.8)')
+          s=s.replace('birthPoint.scale.setScalar(.8+u*2.8)', 'birthPoint.scale.setScalar(.8+u*5.2)')
+          s=s.replace('birthLight.intensity=25+210*u', 'birthLight.intensity=40+560*u')
+          s=s.replace('}else if(t<1.28){\n    const u=(t-.8)/.48', '}else if(t<2.5){\n    const u=(t-1.8)/.7')
+          s=s.replace('birthPoint.visible=u<.16', 'birthPoint.visible=u<.28')
+          s=s.replace('birthLight.intensity=300*(1-u)+45', 'birthLight.intensity=600*(1-u)+120')
+          s=s.replace('}else{\n    birthPoint.visible=false\n    birthBurstMaterial.opacity=0\n    birthLight.intensity=25', '}else{\n    birthPoint.visible=false\n    birthBurstMaterial.opacity=0\n    const fade=Math.max(0,1-(t-2.5)/2.5)\n    birthLight.intensity=120*fade')
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Delay birth 10s and strengthen fading light'
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
