@@ -75,10 +75,10 @@ function makeDigitOneCenters(){
       pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))
     }
   }
-  const stem=Math.round(BODY_COUNT*.57),base=Math.round(BODY_COUNT*.18),cap=BODY_COUNT-stem-base
+  const stem=Math.round(BODY_COUNT*.59),base=Math.round(BODY_COUNT*.12),cap=BODY_COUNT-stem-base
   addBox(stem,0,.02,0,.78,4.55,.92,0)
-  addBox(base,0,-2.28,0,1.72,.52,.92,10000)
-  addSlanted(cap,-1.28,1.68,-.05,2.70,.72,.92,20000)
+  addBox(base,0,-2.28,0,1.28,.46,.92,10000)
+  addSlanted(cap,-1.55,1.55,-.05,2.78,.52,.92,20000)
   if(pts.length!==BODY_COUNT)throw new Error('Digit 1 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
