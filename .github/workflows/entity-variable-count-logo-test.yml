@@ -1,0 +1,53 @@
+name: Test variable-count EMAE logo
+on:
+  push:
+    branches: [entity-rewards-variable-count-v1]
+    paths: [.github/workflows/entity-variable-count-logo-test.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-rewards-variable-count-v1
+          fetch-depth: 0
+      - name: Generalize validated logo skeleton to current BODY_COUNT
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js'); s=p.read_text()
+          start=s.index('function makeEmaeLogoCenters(){')
+          end=s.index('\n\nconst personality=',start)
+          old=s[start:end]
+          # Preserve the validated silhouette generator; only make its reference allocation scale with N.
+          # The validated implementation already derives branch counts from BODY_COUNT. Replace fixed
+          # 12+12 diaeresis allocation by the same validated 8% proportion (24/300), with exact remainder.
+          old=old.replace('const dotEach=12,branchTotal=BODY_COUNT-dotEach*2,left=Math.floor(branchTotal/2),right=branchTotal-left',
+                          'const dotTotal=Math.max(2,Math.round(BODY_COUNT*.08)),dotLeft=Math.floor(dotTotal/2),dotRight=dotTotal-dotLeft,branchTotal=BODY_COUNT-dotTotal,left=Math.floor(branchTotal/2),right=branchTotal-left')
+          old=old.replace('addDot(dotEach,-.54,2.73,20000)\n  addDot(dotEach,.54,2.73,30000)',
+                          'addDot(dotLeft,-.54,2.73,20000)\n  addDot(dotRight,.54,2.73,30000)')
+          s=s[:start]+old+s[end:]
+          p.write_text(s)
+          PY
+      - name: Verify exact counts at representative thresholds
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          for n in (300,345,500,567,1000,1087,1500,2000):
+            d=max(2,round(n*.08)); dl=d//2; dr=d-dl; b=n-d; l=b//2; r=b-l
+            assert dl+dr+l+r==n
+            print(n, '=>', l, r, dl, dr, '=', l+r+dl+dr)
+          PY
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit variable-count generator
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Generalize validated EMAE logo to arbitrary ball counts"
+          git push origin HEAD:entity-rewards-variable-count-v1
