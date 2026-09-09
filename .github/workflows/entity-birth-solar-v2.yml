@@ -1,0 +1,32 @@
+name: Solar birth v2
+'on':
+  push:
+    branches:
+      - entity-new-marble-birth-sphere-v1
+    paths:
+      - .github/workflows/entity-birth-solar-v2.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: python3 tools/patch_birth_solar_v2.py
+      - run: npm install
+      - run: npm run build
+      - run: |
+          grep -F "const solarCore=" src/main-entity-50.js
+          grep -F "t<4.15" src/main-entity-50.js
+          ! grep -F "birthBurstCount" src/main-entity-50.js
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Replace firework birth with solar explosion"
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
