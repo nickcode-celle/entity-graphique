@@ -1,0 +1,68 @@
+name: Build 300-ball digit 3 skeleton test
+
+on:
+  push:
+    branches:
+      - entity-digit-3-test-v1
+    paths:
+      - .github/workflows/entity-digit-3-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-3-test-v1
+          fetch-depth: 0
+      - name: Replace digit 2 skeleton with digit 3 skeleton only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          start=s.index('function makeDigitTwoCenters(){')
+          end=s.index('\n\nconst personality=',start)
+          digit="""function makeDigitThreeCenters(){
+            const pts=[]
+            function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+            function addCurve(count,points,width,depth,offset){
+              const seg=[];let total=0
+              for(let j=0;j<points.length-1;j++){const a=points[j],b=points[j+1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);seg.push(l);total+=l}
+              for(let i=0;i<count;i++){
+                const k=i+1+offset,target=halton(k,2)*total,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
+                let acc=0,j=0;while(j<seg.length-1&&acc+seg[j]<target){acc+=seg[j];j++}
+                const a=points[j],b=points[j+1],u=(target-acc)/seg[j],dx=b[0]-a[0],dy=b[1]-a[1],len=seg[j],nx=-dy/len,ny=dx/len
+                pts.push(new THREE.Vector3(a[0]+dx*u+nx*side,a[1]+dy*u+ny*side,z))
+              }
+            }
+            const upper=Math.round(BODY_COUNT*.49),lower=BODY_COUNT-upper
+            addCurve(upper,[[-1.18,2.10],[-.62,2.43],[.20,2.48],[.88,2.24],[1.18,1.78],[1.12,1.25],[.78,.72],[.18,.38],[-.52,.30]],.66,.92,0)
+            addCurve(lower,[[-.42,.28],[.24,.20],[.84,-.08],[1.16,-.58],[1.20,-1.15],[.98,-1.72],[.50,-2.10],[-.18,-2.28],[-.88,-2.12],[-1.28,-1.82]],.68,.92,10000)
+            if(pts.length!==BODY_COUNT)throw new Error('Digit 3 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+            return pts
+          }"""
+          digit='\n'.join(line[10:] if line.startswith('          ') else line for line in digit.splitlines())
+          s=s[:start]+digit+s[end:]
+          old='const sphereCenters=makeBodyCenters(),digitTwoCenters=makeDigitTwoCenters(),centers=sphereCenters.map(p=>p.clone())'
+          new='const sphereCenters=makeBodyCenters(),digitThreeCenters=makeDigitThreeCenters(),centers=sphereCenters.map(p=>p.clone())'
+          if old not in s: raise SystemExit('STOP: digit 2 centers anchor not found')
+          s=s.replace(old,new,1)
+          if 'digitTwoCenters[i]' not in s: raise SystemExit('STOP: digit 2 morph anchor not found')
+          s=s.replace('digitTwoCenters[i]','digitThreeCenters[i]',1)
+          p.write_text(s)
+          PY
+      - name: Install and build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit digit 3 test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Test 300-ball digit 3 skeleton"
+          git push origin HEAD:entity-digit-3-test-v1
