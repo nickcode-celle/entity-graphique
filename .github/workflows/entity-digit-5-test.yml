@@ -1,0 +1,57 @@
+name: Build 300-ball digit 5 skeleton test
+on:
+  push:
+    branches: [entity-digit-5-test-v1]
+    paths: [.github/workflows/entity-digit-5-test.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-5-test-v1
+          fetch-depth: 0
+      - name: Replace digit 4 skeleton with digit 5 skeleton only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js'); s=p.read_text()
+          start=s.index('function makeDigitFourCenters(){'); end=s.index('\n\nconst personality=',start)
+          digit="""function makeDigitFiveCenters(){
+            const pts=[]
+            function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+            function addCurve(count,points,width,depth,offset){
+              const seg=[];let total=0
+              for(let j=0;j<points.length-1;j++){const a=points[j],b=points[j+1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);seg.push(l);total+=l}
+              for(let i=0;i<count;i++){const k=i+1+offset,target=halton(k,2)*total,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;let acc=0,j=0;while(j<seg.length-1&&acc+seg[j]<target){acc+=seg[j];j++}const a=points[j],b=points[j+1],u=(target-acc)/seg[j],dx=b[0]-a[0],dy=b[1]-a[1],len=seg[j],nx=-dy/len,ny=dx/len;pts.push(new THREE.Vector3(a[0]+dx*u+nx*side,a[1]+dy*u+ny*side,z))}
+            }
+            const top=Math.round(BODY_COUNT*.24),down=Math.round(BODY_COUNT*.23),curve=BODY_COUNT-top-down
+            addCurve(top,[[1.20,2.35],[-1.08,2.35]],.62,.92,0)
+            addCurve(down,[[-1.08,2.35],[-1.18,.28]],.64,.92,10000)
+            addCurve(curve,[[-1.15,.32],[-.45,.55],[.42,.48],[1.02,.08],[1.25,-.55],[1.18,-1.22],[.82,-1.78],[.20,-2.12],[-.52,-2.18],[-1.12,-1.88]],.68,.92,20000)
+            if(pts.length!==BODY_COUNT)throw new Error('Digit 5 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+            return pts
+          }"""
+          digit='\n'.join(line[10:] if line.startswith('          ') else line for line in digit.splitlines())
+          s=s[:start]+digit+s[end:]
+          old='const sphereCenters=makeBodyCenters(),digitFourCenters=makeDigitFourCenters(),centers=sphereCenters.map(p=>p.clone())'
+          new='const sphereCenters=makeBodyCenters(),digitFiveCenters=makeDigitFiveCenters(),centers=sphereCenters.map(p=>p.clone())'
+          if old not in s: raise SystemExit('STOP: digit 4 centers anchor not found')
+          s=s.replace(old,new,1)
+          if 'digitFourCenters[i]' not in s: raise SystemExit('STOP: digit 4 morph anchor not found')
+          s=s.replace('digitFourCenters[i]','digitFiveCenters[i]',1)
+          p.write_text(s)
+          PY
+      - name: Install and build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit digit 5 test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Test 300-ball digit 5 skeleton"
+          git push origin HEAD:entity-digit-5-test-v1
