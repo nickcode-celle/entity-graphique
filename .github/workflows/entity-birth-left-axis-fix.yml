@@ -1,0 +1,44 @@
+name: Fix birth sequence and left central position
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: [.github/workflows/entity-birth-left-axis-fix.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+          fetch-depth: 0
+      - name: Apply exact birth correction
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old='const birthPosition=new THREE.Vector3(128,18,48)'
+          new='const birthPosition=new THREE.Vector3(-128,0,0)'
+          if old not in s: raise SystemExit('birth position anchor not found')
+          s=s.replace(old,new,1)
+          old2='''  const t=now-birthStart\n  birthMarble.visible=true\n  if(t<.8){'''
+          new2='''  const t=now-birthStart\n  // The marble does not exist visually before the light point bursts.\n  birthMarble.visible=t>=1.8\n  if(t<1.8){'''
+          if old2 not in s: raise SystemExit('birth timing anchor not found')
+          s=s.replace(old2,new2,1)
+          s=s.replace('THREE.MathUtils.smoothstep(t,0,.8)','THREE.MathUtils.smoothstep(t,0,1.8)',1)
+          s=s.replace('}else if(t<1.28){\n    const u=(t-.8)/.48','}else if(t<2.28){\n    const u=(t-1.8)/.48',1)
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Make light burst visibly precede left-axis marble birth"
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
