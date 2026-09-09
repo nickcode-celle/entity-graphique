@@ -65,11 +65,11 @@ function makeEmaeLogoCenters(){
   function addBranch(count,side,offset){
     for(let i=0;i<count;i++){
       const k=i+1+offset,t=halton(k,2),u=halton(k,3)-.5,v=halton(k,5)-.5
-      const y=-2.05+t*4.15
-      const curve=1.48-1.03*t+.34*Math.sin(Math.PI*t)
-      const halfWidth=.48-.25*t
-      const x=side*(curve+u*halfWidth)
-      const z=v*(.95-.28*t)
+      const y=-2.15+t*4.20
+      const center=.48+1.55*Math.pow(1-t,1.45)+.18*Math.sin(Math.PI*t)
+      const width=.34+.34*Math.pow(1-t,.85)
+      const x=side*(center+u*width)
+      const z=v*(.92-.20*t)
       pts.push(new THREE.Vector3(x,y,z))
     }
   }
@@ -82,8 +82,8 @@ function makeEmaeLogoCenters(){
   const dots=30,branches=BODY_COUNT-dots,left=Math.floor(branches/2),right=branches-left
   addBranch(left,-1,0)
   addBranch(right,1,10000)
-  addDot(15,-.48,2.83,20000)
-  addDot(15,.48,2.83,30000)
+  addDot(15,-.62,2.82,20000)
+  addDot(15,.62,2.82,30000)
   if(pts.length!==BODY_COUNT)throw new Error('EMAE symbol skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
