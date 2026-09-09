@@ -1,0 +1,52 @@
+name: Build 300-ball digit 8 skeleton test
+on:
+  push:
+    branches: [entity-digit-8-test-v1]
+    paths: [.github/workflows/entity-digit-8-test.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-8-test-v1
+          fetch-depth: 0
+      - name: Replace digit 7 skeleton with digit 8 skeleton only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js'); s=p.read_text()
+          start=s.index('function makeDigitSevenCenters(){'); end=s.index('\n\nconst personality=',start)
+          digit="""function makeDigitEightCenters(){
+            const pts=[]
+            function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+            function addLoop(count,cx,cy,rx,ry,width,depth,offset){for(let i=0;i<count;i++){const k=i+1+offset,a=halton(k,2)*Math.PI*2,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;const ca=Math.cos(a),sa=Math.sin(a),nx=ca/rx,ny=sa/ry,nl=Math.hypot(nx,ny);pts.push(new THREE.Vector3(cx+rx*ca+(nx/nl)*side,cy+ry*sa+(ny/nl)*side,z))}}
+            const upper=Math.round(BODY_COUNT*.46),lower=BODY_COUNT-upper
+            addLoop(upper,0,1.22,1.02,1.22,.58,.92,0)
+            addLoop(lower,0,-1.12,1.18,1.38,.62,.92,10000)
+            if(pts.length!==BODY_COUNT)throw new Error('Digit 8 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+            return pts
+          }"""
+          digit='\n'.join(line[10:] if line.startswith('          ') else line for line in digit.splitlines())
+          s=s[:start]+digit+s[end:]
+          old='const sphereCenters=makeBodyCenters(),digitSevenCenters=makeDigitSevenCenters(),centers=sphereCenters.map(p=>p.clone())'
+          new='const sphereCenters=makeBodyCenters(),digitEightCenters=makeDigitEightCenters(),centers=sphereCenters.map(p=>p.clone())'
+          if old not in s: raise SystemExit('STOP: digit 7 centers anchor not found')
+          s=s.replace(old,new,1)
+          if 'digitSevenCenters[i]' not in s: raise SystemExit('STOP: digit 7 morph anchor not found')
+          s=s.replace('digitSevenCenters[i]','digitEightCenters[i]',1)
+          p.write_text(s)
+          PY
+      - name: Install and build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit digit 8 test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Test 300-ball digit 8 skeleton"
+          git push origin HEAD:entity-digit-8-test-v1
