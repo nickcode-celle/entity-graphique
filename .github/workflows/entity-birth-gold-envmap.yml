@@ -1,0 +1,53 @@
+name: Give newborn marble dedicated gold reflections
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: ['.github/workflows/entity-birth-gold-envmap.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Add dedicated reflection environment to newborn only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old_import="import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'"
+          new_import=old_import+"\nimport {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js'"
+          if old_import not in s:
+              raise SystemExit('STOP: OutputPass import anchor not found')
+          s=s.replace(old_import,new_import,1)
+          old_renderer="app.appendChild(renderer.domElement)"
+          new_renderer="app.appendChild(renderer.domElement)\nconst birthGoldPMREM=new THREE.PMREMGenerator(renderer)\nconst birthGoldEnv=birthGoldPMREM.fromScene(new RoomEnvironment(),.04).texture\nbirthGoldPMREM.dispose()"
+          if old_renderer not in s:
+              raise SystemExit('STOP: renderer anchor not found')
+          s=s.replace(old_renderer,new_renderer,1)
+          old_mat="const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.38,roughness:.24,emissive:0xffc21a,emissiveIntensity:.10})"
+          new_mat="const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffc928,metalness:.92,roughness:.20,envMap:birthGoldEnv,envMapIntensity:1.55,emissive:0x000000,emissiveIntensity:0})"
+          if old_mat not in s:
+              raise SystemExit('STOP: exact current newborn material anchor not found')
+          s=s.replace(old_mat,new_mat,1)
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify dedicated newborn gold environment
+        run: |
+          grep -F "RoomEnvironment" src/main-entity-50.js
+          grep -F "envMap:birthGoldEnv,envMapIntensity:1.55" src/main-entity-50.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Give newborn marble dedicated gold reflections'
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
