@@ -59,14 +59,14 @@ function makeBodyCenters(){
   )
   return p
 }
-function makeDigitSevenCenters(){
+function makeDigitEightCenters(){
   const pts=[]
   function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-  function addStroke(count,ax,ay,bx,by,width,depth,offset){const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len;for(let i=0;i<count;i++){const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))}}
-  const top=Math.round(BODY_COUNT*.34),diag=BODY_COUNT-top
-  addStroke(top,-1.34,2.30,1.34,2.30,.64,.92,0)
-  addStroke(diag,1.30,2.28,-.42,-2.30,.68,.92,10000)
-  if(pts.length!==BODY_COUNT)throw new Error('Digit 7 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  function addLoop(count,cx,cy,rx,ry,width,depth,offset){for(let i=0;i<count;i++){const k=i+1+offset,a=halton(k,2)*Math.PI*2,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;const ca=Math.cos(a),sa=Math.sin(a),nx=ca/rx,ny=sa/ry,nl=Math.hypot(nx,ny);pts.push(new THREE.Vector3(cx+rx*ca+(nx/nl)*side,cy+ry*sa+(ny/nl)*side,z))}}
+  const upper=Math.round(BODY_COUNT*.46),lower=BODY_COUNT-upper
+  addLoop(upper,0,1.22,1.02,1.22,.58,.92,0)
+  addLoop(lower,0,-1.12,1.18,1.38,.62,.92,10000)
+  if(pts.length!==BODY_COUNT)throw new Error('Digit 8 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
 
@@ -158,9 +158,9 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),digitSevenCenters=makeDigitSevenCenters(),centers=sphereCenters.map(p=>p.clone())
+const sphereCenters=makeBodyCenters(),digitEightCenters=makeDigitEightCenters(),centers=sphereCenters.map(p=>p.clone())
 const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitSevenCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitEightCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
