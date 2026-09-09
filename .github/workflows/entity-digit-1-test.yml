@@ -1,0 +1,70 @@
+name: Build 300-ball digit 1 skeleton test
+
+on:
+  push:
+    branches: [entity-digit-1-test-v1]
+    paths: [.github/workflows/entity-digit-1-test.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-1-test-v1
+          fetch-depth: 0
+      - name: Replace gorilla test with digit 1 skeleton only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          s=s.replace("const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1000", "const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300", 1)
+          start=s.index('function makeGorillaCenters(){')
+          end=s.index('\n\nconst personality=',start)
+          digit=r'''function makeDigitOneCenters(){
+  const pts=[]
+  function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+  function addBox(count,cx,cy,cz,sx,sy,sz,offset){
+    for(let i=0;i<count;i++){
+      const k=i+1+offset
+      pts.push(new THREE.Vector3(cx+(halton(k,2)-.5)*sx,cy+(halton(k,3)-.5)*sy,cz+(halton(k,5)-.5)*sz))
+    }
+  }
+  function addSlanted(count,ax,ay,bx,by,width,depth,offset){
+    const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len
+    for(let i=0;i<count;i++){
+      const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
+      pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))
+    }
+  }
+  const stem=Math.round(BODY_COUNT*.60),base=Math.round(BODY_COUNT*.25),cap=BODY_COUNT-stem-base
+  addBox(stem,0,.05,0,.82,4.55,.92,0)
+  addBox(base,0,-2.28,0,2.65,.58,.92,10000)
+  addSlanted(cap,-.92,1.78,-.05,2.62,.62,.92,20000)
+  if(pts.length!==BODY_COUNT)throw new Error('Digit 1 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  return pts
+}'''
+          s=s[:start]+digit+s[end:]
+          s=s.replace('const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())', 'const sphereCenters=makeBodyCenters(),digitOneCenters=makeDigitOneCenters(),centers=sphereCenters.map(p=>p.clone())', 1)
+          s=s.replace('const GORILLA_MORPH_START=1,GORILLA_MORPH_DURATION=3', 'const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5', 1)
+          old="function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-GORILLA_MORPH_START)/GORILLA_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],gorillaCenters[i],s);updateCells()}"
+          new="function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitOneCenters[i],s);updateCells()}"
+          if old not in s: raise SystemExit('STOP: skeleton morph anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Install and build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit digit 1 test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Test 300-ball digit 1 skeleton"
+          git push origin HEAD:entity-digit-1-test-v1
