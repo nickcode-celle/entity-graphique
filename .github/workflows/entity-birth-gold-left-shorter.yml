@@ -1,0 +1,51 @@
+name: Tune birth position gold and light duration
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: ['.github/workflows/entity-birth-gold-left-shorter.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply requested birth tuning
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          reps=[
+            ('const birthPosition=new THREE.Vector3(-128,0,0)','const birthPosition=new THREE.Vector3(-142,0,0)'),
+            ('const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xd7a52a,metalness:.72,roughness:.20,emissive:0x7a4a00,emissiveIntensity:.16})','const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.82,roughness:.16,emissive:0x2f2100,emissiveIntensity:.07})'),
+            ('}else if(t<4.15){','}else if(t<3.85){'),
+            ('const u=(t-1.8)/2.35','const u=(t-1.8)/2.05'),
+            ('const fade=Math.max(0,1-(t-4.15)/3.8)','const fade=Math.max(0,1-(t-3.85)/2.4)')
+          ]
+          for old,new in reps:
+            if old not in s:
+              raise SystemExit('STOP: exact anchor not found: '+old)
+            s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify requested changes
+        run: |
+          grep -F 'const birthPosition=new THREE.Vector3(-142,0,0)' src/main-entity-50.js
+          grep -F 'color:0xffd84a' src/main-entity-50.js
+          grep -F 't<3.85' src/main-entity-50.js
+          grep -F '(t-3.85)/2.4' src/main-entity-50.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Tune birth gold position and light duration'
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
