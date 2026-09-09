@@ -62,17 +62,20 @@ function makeBodyCenters(){
 function makeDigitTwoCenters(){
   const pts=[]
   function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-  function addStroke(count,ax,ay,bx,by,width,depth,offset){
-    const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len
+  function addCurve(count,points,width,depth,offset){
+    const seg=[];let total=0
+    for(let j=0;j<points.length-1;j++){const a=points[j],b=points[j+1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);seg.push(l);total+=l}
     for(let i=0;i<count;i++){
-      const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
-      pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))
+      const k=i+1+offset,target=halton(k,2)*total,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
+      let acc=0,j=0;while(j<seg.length-1&&acc+seg[j]<target){acc+=seg[j];j++}
+      const a=points[j],b=points[j+1],u=(target-acc)/seg[j],dx=b[0]-a[0],dy=b[1]-a[1],len=seg[j],nx=-dy/len,ny=dx/len
+      pts.push(new THREE.Vector3(a[0]+dx*u+nx*side,a[1]+dy*u+ny*side,z))
     }
   }
-  const top=Math.round(BODY_COUNT*.22),diag=Math.round(BODY_COUNT*.43),base=BODY_COUNT-top-diag
-  addStroke(top,-1.35,2.05,1.10,2.05,.62,.92,0)
-  addStroke(diag,1.18,1.88,-1.25,-1.72,.68,.92,10000)
-  addStroke(base,-1.30,-2.05,1.35,-2.05,.62,.92,20000)
+  const top=Math.round(BODY_COUNT*.36),diag=Math.round(BODY_COUNT*.34),base=BODY_COUNT-top-diag
+  addCurve(top,[[-1.35,1.58],[-1.48,1.95],[-1.22,2.30],[-.62,2.52],[.18,2.55],[.82,2.34],[1.12,1.92]],.66,.92,0)
+  addCurve(diag,[[1.12,1.92],[1.02,1.48],[.62,.82],[.08,.12],[-.52,-.62],[-1.18,-1.58]],.68,.92,10000)
+  addCurve(base,[[-1.28,-1.98],[1.34,-1.98]],.62,.92,20000)
   if(pts.length!==BODY_COUNT)throw new Error('Digit 2 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
