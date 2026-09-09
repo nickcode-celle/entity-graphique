@@ -65,15 +65,15 @@ function updateNewMarbleBirth(now){
   if(t<1.8){
     const u=THREE.MathUtils.smoothstep(t,0,1.8)
     birthPoint.visible=true
-    birthPoint.scale.setScalar(.8+u*2.8)
-    birthLight.intensity=25+210*u
+    birthPoint.scale.setScalar(.8+u*5.2)
+    birthLight.intensity=40+560*u
     birthMarble.scale.setScalar(.001)
     birthBurstMaterial.opacity=0
   }else if(t<2.28){
     const u=(t-1.8)/.48
     const e=1-Math.pow(1-u,3)
-    birthPoint.visible=u<.16
-    birthLight.intensity=300*(1-u)+45
+    birthPoint.visible=u<.28
+    birthLight.intensity=600*(1-u)+120
     birthMarble.scale.setScalar(Math.max(.001,THREE.MathUtils.smoothstep(u,.08,.78)*controls.TAILLE_BILLES))
     birthBurstMaterial.opacity=Math.sin(Math.PI*u)
     for(let i=0;i<birthBurstCount;i++){
@@ -88,7 +88,8 @@ function updateNewMarbleBirth(now){
   }else{
     birthPoint.visible=false
     birthBurstMaterial.opacity=0
-    birthLight.intensity=25
+    const fade=Math.max(0,1-(t-2.5)/2.5)
+    birthLight.intensity=120*fade
     birthMarble.scale.setScalar(controls.TAILLE_BILLES)
   }
 }
