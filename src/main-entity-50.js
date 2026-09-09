@@ -5,6 +5,7 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js'
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js'
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js'
 import './style.css'
 
 const BODY_COUNT=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
@@ -15,6 +16,9 @@ renderer.shadowMap.enabled=true
 renderer.shadowMap.type=THREE.PCFSoftShadowMap
 renderer.toneMapping=THREE.ACESFilmicToneMapping
 app.appendChild(renderer.domElement)
+const birthGoldPMREM=new THREE.PMREMGenerator(renderer)
+const birthGoldEnv=birthGoldPMREM.fromScene(new RoomEnvironment(),.04).texture
+birthGoldPMREM.dispose()
 
 const scene=new THREE.Scene()
 scene.background=new THREE.Color(0x1d1f22)
@@ -35,7 +39,7 @@ birthGroup.add(birthPoint)
 const birthLight=new THREE.PointLight(0xffd75b,0,90,2)
 birthLight.position.copy(birthPosition)
 scene.add(birthLight)
-const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.38,roughness:.24,emissive:0xffc21a,emissiveIntensity:.10})
+const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffc928,metalness:.92,roughness:.20,envMap:birthGoldEnv,envMapIntensity:1.55,emissive:0x000000,emissiveIntensity:0})
 const birthMarble=new THREE.Mesh(new THREE.SphereGeometry(6,28,20),birthMarbleMaterial)
 birthMarble.position.copy(birthPosition)
 birthMarble.scale.setScalar(.001)
