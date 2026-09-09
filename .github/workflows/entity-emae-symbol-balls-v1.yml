@@ -1,10 +1,12 @@
-name: Build EMAE 300 ball symbol
-on: [push]
+name: Build EMAE 300-ball symbol
+on:
+  push:
+    branches: [entity-emae-logo-test-v1]
+    paths: [.github/workflows/entity-emae-symbol-balls-v1.yml]
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.ref == 'refs/heads/entity-emae-logo-test-v1' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,38 +18,38 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('src/main-entity-50.js')
-          s=p.read_text()
+          p=Path('src/main-entity-50.js'); s=p.read_text()
           start=s.index('function makeEmaeLogoCenters(){')
           end=s.index('\n\nconst personality=',start)
-          fn=r'''function makeEmaeLogoCenters(){
-  const pts=[]
-  function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-  function addBranch(count,side,offset){
-    for(let i=0;i<count;i++){
-      const k=i+1+offset,t=halton(k,2),u=halton(k,3)-.5,v=halton(k,5)-.5
-      const y=-2.05+t*4.15
-      const curve=1.48-1.03*t+.34*Math.sin(Math.PI*t)
-      const halfWidth=.48-.25*t
-      const x=side*(curve+u*halfWidth)
-      const z=v*(.95-.28*t)
-      pts.push(new THREE.Vector3(x,y,z))
-    }
-  }
-  function addDot(count,cx,cy,offset){
-    for(let i=0;i<count;i++){
-      const k=i+1+offset,a=halton(k,2)*Math.PI*2,z0=halton(k,3)*2-1,r=.34*Math.cbrt(halton(k,5)),q=Math.sqrt(Math.max(0,1-z0*z0))
-      pts.push(new THREE.Vector3(cx+r*q*Math.cos(a),cy+r*z0,r*q*Math.sin(a)))
-    }
-  }
-  const dots=30,branches=BODY_COUNT-dots,left=Math.floor(branches/2),right=branches-left
-  addBranch(left,-1,0)
-  addBranch(right,1,10000)
-  addDot(15,-.48,2.83,20000)
-  addDot(15,.48,2.83,30000)
-  if(pts.length!==BODY_COUNT)throw new Error('EMAE symbol skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
-  return pts
-}'''
+          fn="""function makeEmaeLogoCenters(){
+            const pts=[]
+            function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+            function addBranch(count,side,offset){
+              for(let i=0;i<count;i++){
+                const k=i+1+offset,t=halton(k,2),u=halton(k,3)-.5,v=halton(k,5)-.5
+                const y=-2.05+t*4.15
+                const curve=1.48-1.03*t+.34*Math.sin(Math.PI*t)
+                const halfWidth=.48-.25*t
+                const x=side*(curve+u*halfWidth)
+                const z=v*(.95-.28*t)
+                pts.push(new THREE.Vector3(x,y,z))
+              }
+            }
+            function addDot(count,cx,cy,offset){
+              for(let i=0;i<count;i++){
+                const k=i+1+offset,a=halton(k,2)*Math.PI*2,z0=halton(k,3)*2-1,r=.34*Math.cbrt(halton(k,5)),q=Math.sqrt(Math.max(0,1-z0*z0))
+                pts.push(new THREE.Vector3(cx+r*q*Math.cos(a),cy+r*z0,r*q*Math.sin(a)))
+              }
+            }
+            const dots=30,branches=BODY_COUNT-dots,left=Math.floor(branches/2),right=branches-left
+            addBranch(left,-1,0)
+            addBranch(right,1,10000)
+            addDot(15,-.48,2.83,20000)
+            addDot(15,.48,2.83,30000)
+            if(pts.length!==BODY_COUNT)throw new Error('EMAE symbol skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+            return pts
+          }"""
+          fn='\n'.join(line[10:] if line.startswith('          ') else line for line in fn.splitlines())
           s=s[:start]+fn+s[end:]
           p.write_text(s)
           PY
