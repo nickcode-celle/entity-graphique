@@ -26,7 +26,7 @@ scene.add(entityGroup)
 // NEW_MARBLE_BIRTH_SPHERE_TEST
 const birthGroup=new THREE.Group()
 scene.add(birthGroup)
-const birthPosition=new THREE.Vector3(128,18,48)
+const birthPosition=new THREE.Vector3(-128,0,0)
 const birthPointMaterial=new THREE.MeshBasicMaterial({color:0xfff4b0,transparent:true,opacity:1})
 const birthPoint=new THREE.Mesh(new THREE.SphereGeometry(.18,20,20),birthPointMaterial)
 birthPoint.position.copy(birthPosition)
@@ -60,16 +60,17 @@ const birthBurstDirections=Array.from({length:birthBurstCount},(_,i)=>{
 const birthStart=performance.now()/1000
 function updateNewMarbleBirth(now){
   const t=now-birthStart
-  birthMarble.visible=true
-  if(t<.8){
-    const u=THREE.MathUtils.smoothstep(t,0,.8)
+  // The marble does not exist visually before the light point bursts.
+  birthMarble.visible=t>=1.8
+  if(t<1.8){
+    const u=THREE.MathUtils.smoothstep(t,0,1.8)
     birthPoint.visible=true
     birthPoint.scale.setScalar(.8+u*2.8)
     birthLight.intensity=25+210*u
     birthMarble.scale.setScalar(.001)
     birthBurstMaterial.opacity=0
-  }else if(t<1.28){
-    const u=(t-.8)/.48
+  }else if(t<2.28){
+    const u=(t-1.8)/.48
     const e=1-Math.pow(1-u,3)
     birthPoint.visible=u<.16
     birthLight.intensity=300*(1-u)+45
