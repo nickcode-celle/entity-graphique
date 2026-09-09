@@ -1,0 +1,47 @@
+name: Refine digit 1 silhouette v2
+
+on:
+  push:
+    branches:
+      - entity-digit-1-test-v1
+    paths:
+      - '.github/workflows/refine-digit-1-shape-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-1-test-v1
+          fetch-depth: 0
+      - name: Lengthen top and narrow foot only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          replacements={
+            "const stem=Math.round(BODY_COUNT*.57),base=Math.round(BODY_COUNT*.18),cap=BODY_COUNT-stem-base":"const stem=Math.round(BODY_COUNT*.59),base=Math.round(BODY_COUNT*.12),cap=BODY_COUNT-stem-base",
+            "addBox(base,0,-2.28,0,1.72,.52,.92,10000)":"addBox(base,0,-2.28,0,1.28,.46,.92,10000)",
+            "addSlanted(cap,-1.28,1.68,-.05,2.70,.72,.92,20000)":"addSlanted(cap,-1.55,1.55,-.05,2.78,.52,.92,20000)"
+          }
+          for old,new in replacements.items():
+            if old not in s: raise SystemExit('STOP: expected digit 1 v1 anchor not found: '+old)
+            s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Install and build before commit
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit refinement
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Sharpen digit 1 top and narrow foot"
+          git push origin HEAD:entity-digit-1-test-v1
