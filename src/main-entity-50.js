@@ -59,9 +59,16 @@ const birthBurstDirections=Array.from({length:birthBurstCount},(_,i)=>{
 })
 const birthStart=performance.now()/1000
 function updateNewMarbleBirth(now){
-  const t=now-birthStart
-  // The marble does not exist visually before the light point bursts.
+  const t=now-birthStart-10
+  // For the first 10 seconds: ENTITY alone, no light and no marble.
   birthMarble.visible=t>=1.8
+  if(t<0){
+    birthPoint.visible=false
+    birthLight.intensity=0
+    birthBurstMaterial.opacity=0
+    birthMarble.visible=false
+    return
+  }
   if(t<1.8){
     const u=THREE.MathUtils.smoothstep(t,0,1.8)
     birthPoint.visible=true
