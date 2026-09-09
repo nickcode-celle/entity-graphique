@@ -21,7 +21,7 @@ jobs:
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          old='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd700,metalness:.88,roughness:.14,emissive:0x5a3900,emissiveIntensity:.08})'
+          old='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.82,roughness:.16,emissive:0x2f2100,emissiveIntensity:.07})'
           new='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd700,metalness:.82,roughness:.20,emissive:0xffb000,emissiveIntensity:.22})'
           if old not in s:
               raise SystemExit('STOP: exact newborn material anchor not found')
