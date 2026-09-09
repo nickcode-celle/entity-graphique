@@ -1,12 +1,10 @@
-name: Build EMAE 300-ball symbol
-on:
-  push:
-    branches: [entity-emae-logo-test-v1]
-    paths: [.github/workflows/entity-emae-symbol-balls-v1.yml]
+name: Build EMAE 300 ball symbol
+on: [push]
 permissions:
   contents: write
 jobs:
   patch:
+    if: github.ref == 'refs/heads/entity-emae-logo-test-v1' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,10 +12,12 @@ jobs:
           ref: entity-emae-logo-test-v1
           fetch-depth: 0
       - name: Replace lettering skeleton by validated EMAE symbol only
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('src/main-entity-50.js'); s=p.read_text()
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
           start=s.index('function makeEmaeLogoCenters(){')
           end=s.index('\n\nconst personality=',start)
           fn=r'''function makeEmaeLogoCenters(){
@@ -54,6 +54,7 @@ jobs:
       - name: Build
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
       - name: Commit symbol
+        shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
