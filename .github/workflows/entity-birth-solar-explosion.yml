@@ -1,0 +1,138 @@
+name: Replace fireworks birth with solar explosion
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: ['.github/workflows/entity-birth-solar-explosion.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Replace firework particles with solar plasma shells
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old='''const birthBurstCount=56
+const birthBurstPositions=new Float32Array(birthBurstCount*3)
+const birthBurstGeometry=new THREE.BufferGeometry()
+birthBurstGeometry.setAttribute('position',new THREE.BufferAttribute(birthBurstPositions,3))
+const birthBurstMaterial=new THREE.PointsMaterial({color:0xffd75b,size:1.35,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})
+const birthBurst=new THREE.Points(birthBurstGeometry,birthBurstMaterial)
+birthBurst.position.copy(birthPosition)
+birthBurst.layers.enable(1)
+birthGroup.add(birthBurst)
+const birthBurstDirections=Array.from({length:birthBurstCount},(_,i)=>{
+  const a=i*2.399963229728653
+  const y=1-2*(i+.5)/birthBurstCount
+  const r=Math.sqrt(Math.max(0,1-y*y))
+  return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r)
+})'''
+          new='''const solarCoreMaterial=new THREE.MeshBasicMaterial({color:0xfff2a1,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})
+const solarCore=new THREE.Mesh(new THREE.SphereGeometry(1,32,24),solarCoreMaterial)
+solarCore.position.copy(birthPosition)
+solarCore.layers.enable(1)
+birthGroup.add(solarCore)
+const solarCoronaMaterial=new THREE.MeshBasicMaterial({color:0xffbd3d,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})
+const solarCorona=new THREE.Mesh(new THREE.SphereGeometry(1,32,24),solarCoronaMaterial)
+solarCorona.position.copy(birthPosition)
+solarCorona.layers.enable(1)
+birthGroup.add(solarCorona)
+const solarHaloMaterial=new THREE.MeshBasicMaterial({color:0xff7a16,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})
+const solarHalo=new THREE.Mesh(new THREE.SphereGeometry(1,32,24),solarHaloMaterial)
+solarHalo.position.copy(birthPosition)
+solarHalo.layers.enable(1)
+birthGroup.add(solarHalo)'''
+          if old not in s:
+              raise SystemExit('STOP: firework block not found exactly')
+          s=s.replace(old,new,1)
+          s=s.replace('''    birthBurstMaterial.opacity=0
+    birthMarble.visible=false
+    return''','''    solarCoreMaterial.opacity=0
+    solarCoronaMaterial.opacity=0
+    solarHaloMaterial.opacity=0
+    solarCore.scale.setScalar(.001)
+    solarCorona.scale.setScalar(.001)
+    solarHalo.scale.setScalar(.001)
+    birthMarble.visible=false
+    return''',1)
+          s=s.replace('''    birthMarble.scale.setScalar(.001)
+    birthBurstMaterial.opacity=0''','''    birthMarble.scale.setScalar(.001)
+    solarCoreMaterial.opacity=.12+.55*u
+    solarCoronaMaterial.opacity=.06+.30*u
+    solarHaloMaterial.opacity=.02+.14*u
+    solarCore.scale.setScalar(.25+1.45*u)
+    solarCorona.scale.setScalar(.8+2.4*u)
+    solarHalo.scale.setScalar(1.6+3.8*u)''',1)
+          old2='''  }else if(t<2.28){
+    const u=(t-1.8)/.48
+    const e=1-Math.pow(1-u,3)
+    birthPoint.visible=u<.28
+    birthLight.intensity=600*(1-u)+120
+    birthMarble.scale.setScalar(Math.max(.001,THREE.MathUtils.smoothstep(u,.08,.78)*controls.TAILLE_BILLES))
+    birthBurstMaterial.opacity=Math.sin(Math.PI*u)
+    for(let i=0;i<birthBurstCount;i++){
+      const d=birthBurstDirections[i]
+      const dist=e*(6+(i%8)*.62)
+      const j=i*3
+      birthBurstPositions[j]=d.x*dist
+      birthBurstPositions[j+1]=d.y*dist
+      birthBurstPositions[j+2]=d.z*dist
+    }
+    birthBurstGeometry.attributes.position.needsUpdate=true
+  }else{
+    birthPoint.visible=false
+    birthBurstMaterial.opacity=0
+    const fade=Math.max(0,1-(t-2.5)/2.5)
+    birthLight.intensity=120*fade
+    birthMarble.scale.setScalar(controls.TAILLE_BILLES)'''
+          new2='''  }else if(t<3.65){
+    const u=(t-1.8)/1.85
+    const e=1-Math.pow(1-u,3)
+    birthPoint.visible=u<.20
+    birthLight.intensity=720*(1-.62*u)+180
+    birthMarble.scale.setScalar(Math.max(.001,THREE.MathUtils.smoothstep(u,.05,.58)*controls.TAILLE_BILLES))
+    solarCoreMaterial.opacity=.90*(1-u)+.10
+    solarCoronaMaterial.opacity=.58*(1-u)+.08
+    solarHaloMaterial.opacity=.34*(1-u)+.04
+    solarCore.scale.setScalar(1.7+e*2.3)
+    solarCorona.scale.setScalar(3.2+e*5.0)
+    solarHalo.scale.setScalar(5.4+e*8.4)
+  }else{
+    birthPoint.visible=false
+    const fade=Math.max(0,1-(t-3.65)/3.2)
+    solarCoreMaterial.opacity=.10*fade
+    solarCoronaMaterial.opacity=.08*fade
+    solarHaloMaterial.opacity=.04*fade
+    solarCore.scale.setScalar(4.0+2.0*(1-fade))
+    solarCorona.scale.setScalar(8.2+3.5*(1-fade))
+    solarHalo.scale.setScalar(13.8+5.5*(1-fade))
+    birthLight.intensity=180*fade
+    birthMarble.scale.setScalar(controls.TAILLE_BILLES)'''
+          if old2 not in s:
+              raise SystemExit('STOP: animation firework block not found exactly')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify solar birth
+        run: |
+          grep -F 'const solarCore=' src/main-entity-50.js
+          grep -F 't<3.65' src/main-entity-50.js
+          if grep -F 'birthBurstCount' src/main-entity-50.js; then exit 1; fi
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Replace firework birth with longer solar explosion'
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
