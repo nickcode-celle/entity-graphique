@@ -1,0 +1,37 @@
+name: Build exact 654-ball EMAE logo test
+on:
+  push:
+    branches: [entity-rewards-variable-count-v1]
+    paths: [.github/workflows/entity-logo-654-test.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-rewards-variable-count-v1
+          fetch-depth: 0
+      - name: Allow exact 654-ball runtime test only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js'); s=p.read_text()
+          old='const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000]'
+          new='const TEST_COUNTS=[300,500,654,750,760,775,800,875,1000,1500,2000]'
+          if old not in s: raise SystemExit('TEST_COUNTS anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit exact 654 test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Enable exact 654-ball EMAE logo test"
+          git push origin HEAD:entity-rewards-variable-count-v1
