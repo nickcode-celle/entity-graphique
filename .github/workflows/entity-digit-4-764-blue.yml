@@ -1,0 +1,42 @@
+name: Build 764-ball blue digit 4
+on:
+  push:
+    branches: [entity-digit-4-764-blue-test-v1]
+    paths: [.github/workflows/entity-digit-4-764-blue.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-4-764-blue-test-v1
+          fetch-depth: 0
+      - name: Set exact count 764 and blue tier color
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js'); s=p.read_text()
+          old='const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000]'
+          new='const TEST_COUNTS=[300,500,750,760,764,775,800,875,1000,1500,2000]'
+          if old not in s: raise SystemExit('TEST_COUNTS anchor not found')
+          s=s.replace(old,new,1)
+          # Keep the validated digit-4 skeleton exactly; only switch temporary tier color green -> blue.
+          oldc='const tierGreen=new THREE.Color(0x28c95b)'
+          newc='const tierGreen=new THREE.Color(0x2468d8)'
+          if oldc not in s: raise SystemExit('tier color anchor not found')
+          s=s.replace(oldc,newc,1)
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit test
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Test validated digit 4 with 764 balls in blue"
+          git push origin HEAD:entity-digit-4-764-blue-test-v1
