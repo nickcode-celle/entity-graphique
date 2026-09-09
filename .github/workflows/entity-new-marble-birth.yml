@@ -1,0 +1,93 @@
+name: Build new marble birth prototype
+on:
+  push:
+    branches: [entity-new-marble-birth-v1]
+    paths: [.github/workflows/entity-new-marble-birth.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-v1
+          fetch-depth: 0
+      - name: Add exact birth prototype
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          anchor='const personality=personalityColors.map(color=>({color,level:50}))'
+          if anchor not in s: raise SystemExit('birth insertion anchor not found')
+          code=r'''
+// NEW MARBLE BIRTH PROTOTYPE — visual test only.
+// A point of light gives birth to one real golden 3D marble at a fixed position beside ENTITY.
+function startNewMarbleBirth(){
+  const birth=new THREE.Group()
+  entityGroup.add(birth)
+  // Fixed birth point, deliberately outside ENTITY.
+  birth.position.set(-6.2,1.0,1.2)
+
+  const glowMat=new THREE.MeshBasicMaterial({color:0xffd86a,transparent:true,opacity:0.0,depthWrite:false,blending:THREE.AdditiveBlending})
+  const glow=new THREE.Mesh(new THREE.SphereGeometry(.16,20,20),glowMat)
+  birth.add(glow)
+
+  const marbleMat=new THREE.MeshStandardMaterial({color:0xd9a928,roughness:.18,metalness:.72,emissive:0x6b3d00,emissiveIntensity:.65,transparent:true,opacity:0})
+  const marble=new THREE.Mesh(new THREE.SphereGeometry(.45,32,32),marbleMat)
+  marble.castShadow=true; marble.receiveShadow=true; marble.scale.setScalar(.001)
+  birth.add(marble)
+
+  const ringMat=new THREE.MeshBasicMaterial({color:0xffdf7a,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.18,.22,48),ringMat)
+  ring.lookAt(camera.position); birth.add(ring)
+
+  const t0=performance.now()
+  function animateBirth(now){
+    if(!birth.parent)return
+    const t=(now-t0)/1000
+    if(t<.65){
+      // The light point is born first and swells intensely.
+      const u=Math.min(1,t/.65),pulse=.72+.28*Math.sin(t*34)
+      glow.scale.setScalar(.35+u*3.1)
+      glowMat.opacity=(.25+.75*u)*pulse
+      ring.scale.setScalar(.4+u*1.8); ringMat.opacity=.55*(1-u)
+    }else if(t<1.45){
+      // The point of light literally gives birth to the golden marble.
+      const u=(t-.65)/.8,e=1-Math.pow(1-u,3)
+      glow.scale.setScalar(3.45-2.4*e); glowMat.opacity=.9*(1-e)+.12
+      marble.scale.setScalar(.001+.999*e); marbleMat.opacity=e
+      ring.scale.setScalar(2.2+u*3.0); ringMat.opacity=.48*(1-u)
+    }else if(t<4.45){
+      // Full golden marble remains visible for 3 seconds.
+      marble.scale.setScalar(1+.035*Math.sin((t-1.45)*5.2))
+      marbleMat.opacity=1
+      glow.scale.setScalar(1.0+.18*Math.sin(t*5)); glowMat.opacity=.12+.05*Math.sin(t*6)
+      ringMat.opacity=0
+    }else{
+      marble.scale.setScalar(1); glowMat.opacity=.08; ringMat.opacity=0
+      return
+    }
+    requestAnimationFrame(animateBirth)
+  }
+  requestAnimationFrame(animateBirth)
+  return {birth,marble}
+}
+setTimeout(()=>startNewMarbleBirth(),1200)
+
+'''
+          s=s.replace(anchor,code+anchor,1)
+          p.write_text(s)
+          PY
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit prototype
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Prototype point-of-light marble birth"
+          git push origin HEAD:entity-new-marble-birth-v1
