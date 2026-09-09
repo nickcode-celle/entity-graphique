@@ -1,0 +1,44 @@
+name: EMAE 1500 gold timing correction
+on:
+  push:
+    branches: [entity-emae-logo-1500-gold-test-v1]
+    paths: ['.github/workflows/entity-emae-logo-1500-gold-correct.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-emae-logo-1500-gold-test-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Restore normal ENTITY before morph and gold only completed logo
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          old="function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:0xffc928,metalness:.92,roughness:.20,envMap:emaeGoldEnv,envMapIntensity:1.55,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}"
+          new="function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}"
+          if s.count(old)!=1: raise SystemExit('STOP: validated pre-morph gold anchor missing or non-unique')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify sequence
+        run: |
+          grep -F 'BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1500' src/main-entity-50.js
+          grep -F 'color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02' src/main-entity-50.js
+          grep -F 'if(t>=1){const gold=new THREE.Color(0xffc928)' src/main-entity-50.js
+          grep -F 'marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55' src/main-entity-50.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Apply gold only after EMAE logo morph completes'
+          git push origin HEAD:entity-emae-logo-1500-gold-test-v1
