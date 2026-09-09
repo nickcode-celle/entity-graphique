@@ -106,7 +106,7 @@ const assignments=shuffledAssignments(BODY_COUNT,10)
 const individualLevels=buildLevels(personality,assignments)
 function personalityColor(i){const p=personality[assignments[i]],v=new THREE.Color(p.color),h={};v.getHSL(h);const x=individualLevels[i]/100,s=x<=.4?THREE.MathUtils.lerp(.62,.88,x/.4):THREE.MathUtils.lerp(.88,1,(x-.4)/.6);return new THREE.Color().setHSL(h.h,s,h.l)}
 const allMarbleMaterials=[],personalityMaterialCache=new Map()
-function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:0xffc928,metalness:.92,roughness:.20,envMap:emaeGoldEnv,envMapIntensity:1.55,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}
+function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}
 
 let marbleRenderBatches=null
 function initMarbleRenderBatches(){
