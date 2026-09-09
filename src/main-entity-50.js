@@ -85,7 +85,7 @@ function makeEmaeLogoCenters(){
   }
   const left=[[-1.95,-1.78],[-2.08,-1.42],[-2.03,-.98],[-1.85,-.50],[-1.64,.02],[-1.38,.54],[-1.08,1.02],[-.82,1.47],[-.62,1.78],[-.48,1.88],[-.38,1.78],[-.39,1.54],[-.52,1.20],[-.72,.82],[-.91,.42],[-1.06,.03],[-1.12,-.36],[-1.08,-.76],[-1.02,-1.13],[-1.08,-1.48],[-1.27,-1.78],[-1.58,-1.94],[-1.82,-1.91]]
   const right=left.map(([x,y])=>[-x,y])
-  const dotEach=12,branchEach=(BODY_COUNT-dotEach*2)/2
+  const dotEach=Math.round(12*BODY_COUNT/300),branchEach=(BODY_COUNT-dotEach*2)/2
   if(!Number.isInteger(branchEach))throw new Error('EMAE branch count must be integer')
   fillPolygon(branchEach,left,0)
   const leftCount=pts.length
@@ -191,7 +191,7 @@ function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).m
 
 const sphereCenters=makeBodyCenters(),emaeLogoCenters=makeEmaeLogoCenters(),centers=sphereCenters.map(p=>p.clone())
 const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1){const gold=new THREE.Color(0xffc928);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(gold);marbles[i].material.metalness=.92;marbles[i].material.roughness=.20;marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55;marbles[i].material.needsUpdate=true}}updateCells()}
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1){const gold=new THREE.Color(0xffc928);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(gold);marbles[i].material.metalness=.92;marbles[i].material.roughness=.20;marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55;marbles[i].material.needsUpdate=true}if(marbleRenderBatches){const seen=new Set();for(const o of marbleRenderBatches){const batch=o.userData.renderBatch;if(seen.has(batch))continue;seen.add(batch);batch.material.color.set(0xffffff);batch.material.metalness=.92;batch.material.roughness=.20;batch.material.envMap=emaeGoldEnv;batch.material.envMapIntensity=1.55;batch.material.needsUpdate=true}}}updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
