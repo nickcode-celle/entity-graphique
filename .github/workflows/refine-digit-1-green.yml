@@ -1,0 +1,52 @@
+name: Refine green digit 1
+
+on:
+  push:
+    branches:
+      - entity-digit-1-test-v1
+    paths:
+      - '.github/workflows/refine-digit-1-green.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-digit-1-test-v1
+          fetch-depth: 0
+      - name: Refine digit 1 geometry and force tier green during reward
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          replacements={
+            "const stem=Math.round(BODY_COUNT*.60),base=Math.round(BODY_COUNT*.25),cap=BODY_COUNT-stem-base":"const stem=Math.round(BODY_COUNT*.57),base=Math.round(BODY_COUNT*.18),cap=BODY_COUNT-stem-base",
+            "addBox(stem,0,.05,0,.82,4.55,.92,0)":"addBox(stem,0,.02,0,.78,4.55,.92,0)",
+            "addBox(base,0,-2.28,0,2.65,.58,.92,10000)":"addBox(base,0,-2.28,0,1.72,.52,.92,10000)",
+            "addSlanted(cap,-.92,1.78,-.05,2.62,.62,.92,20000)":"addSlanted(cap,-1.28,1.68,-.05,2.70,.72,.92,20000)"
+          }
+          for old,new in replacements.items():
+            if old not in s: raise SystemExit('STOP: digit 1 geometry anchor not found: '+old)
+            s=s.replace(old,new,1)
+          old="function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitOneCenters[i],s);updateCells()}"
+          new="function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitOneCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}"
+          if old not in s: raise SystemExit('STOP: digit 1 morph anchor not found')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Install and build before commit
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit refinement
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Refine digit 1 silhouette and tier green"
+          git push origin HEAD:entity-digit-1-test-v1
