@@ -5,10 +5,11 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js'
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js'
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js'
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js'
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js'
 import './style.css'
 
-const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1500,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
@@ -16,6 +17,9 @@ renderer.shadowMap.enabled=true
 renderer.shadowMap.type=THREE.PCFSoftShadowMap
 renderer.toneMapping=THREE.ACESFilmicToneMapping
 app.appendChild(renderer.domElement)
+const emaeGoldPMREM=new THREE.PMREMGenerator(renderer)
+const emaeGoldEnv=emaeGoldPMREM.fromScene(new RoomEnvironment(),.04).texture
+emaeGoldPMREM.dispose()
 
 const scene=new THREE.Scene()
 scene.background=new THREE.Color(0x1d1f22)
@@ -102,7 +106,7 @@ const assignments=shuffledAssignments(BODY_COUNT,10)
 const individualLevels=buildLevels(personality,assignments)
 function personalityColor(i){const p=personality[assignments[i]],v=new THREE.Color(p.color),h={};v.getHSL(h);const x=individualLevels[i]/100,s=x<=.4?THREE.MathUtils.lerp(.62,.88,x/.4):THREE.MathUtils.lerp(.88,1,(x-.4)/.6);return new THREE.Color().setHSL(h.h,s,h.l)}
 const allMarbleMaterials=[],personalityMaterialCache=new Map()
-function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}
+function personalityMaterial(i){if(personalityMaterialCache.has(i))return personalityMaterialCache.get(i);const m=new THREE.MeshStandardMaterial({color:0xffc928,metalness:.92,roughness:.20,envMap:emaeGoldEnv,envMapIntensity:1.55,emissive:0x000000,emissiveIntensity:0});allMarbleMaterials.push(m);personalityMaterialCache.set(i,m);return m}
 
 let marbleRenderBatches=null
 function initMarbleRenderBatches(){
@@ -187,7 +191,7 @@ function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).m
 
 const sphereCenters=makeBodyCenters(),emaeLogoCenters=makeEmaeLogoCenters(),centers=sphereCenters.map(p=>p.clone())
 const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1){const gold=new THREE.Color(0xffc928);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(gold);marbles[i].material.metalness=.92;marbles[i].material.roughness=.20;marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55;marbles[i].material.needsUpdate=true}}updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
