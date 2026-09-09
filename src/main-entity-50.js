@@ -8,7 +8,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js'
 import './style.css'
 
-const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1000,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
@@ -59,34 +59,27 @@ function makeBodyCenters(){
   )
   return p
 }
-function makeGorillaCenters(){
-  const pts=[],S=1.72
-  function addEllipsoidSurface(count,cx,cy,cz,rx,ry,rz,rotZ=0,phase=0){
-    const c=Math.cos(rotZ),sn=Math.sin(rotZ)
+function makeDigitOneCenters(){
+  const pts=[]
+  function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+  function addBox(count,cx,cy,cz,sx,sy,sz,offset){
     for(let i=0;i<count;i++){
-      const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),a=i*goldenAngle+phase
-      const x=rx*rr*Math.cos(a),yy=ry*y,z=rz*rr*Math.sin(a)
-      const xx=x*c-yy*sn,yyy=x*sn+yy*c
-      pts.push(new THREE.Vector3((cx+xx)*S,(cy+yyy)*S,(cz+z)*S))
+      const k=i+1+offset
+      pts.push(new THREE.Vector3(cx+(halton(k,2)-.5)*sx,cy+(halton(k,3)-.5)*sy,cz+(halton(k,5)-.5)*sz))
     }
   }
-  addEllipsoidSurface(190,0,.15,0,1.18,1.30,.72,0,.10)
-  addEllipsoidSurface(55,-1.48,1.12,0,.78,.70,.62,-.20,.35)
-  addEllipsoidSurface(55,1.48,1.12,0,.78,.70,.62,.20,.70)
-  addEllipsoidSurface(70,0,-1.18,.04,1.02,.58,.66,0,1.05)
-  addEllipsoidSurface(90,0,2.55,-.03,.67,.75,.61,0,1.40)
-  addEllipsoidSurface(35,0,2.22,.58,.50,.34,.48,0,1.75)
-  addEllipsoidSurface(75,-2.18,.25,.03,.48,1.02,.50,-.28,2.10)
-  addEllipsoidSurface(75,2.18,.25,.03,.48,1.02,.50,.28,2.45)
-  addEllipsoidSurface(75,-2.72,-1.42,.24,.47,1.12,.50,-.10,2.80)
-  addEllipsoidSurface(75,2.72,-1.42,.24,.47,1.12,.50,.10,3.15)
-  addEllipsoidSurface(35,-.82,-2.05,.02,.50,.72,.57,-.04,3.50)
-  addEllipsoidSurface(35,.82,-2.05,.02,.50,.72,.57,.04,3.85)
-  addEllipsoidSurface(25,-1.00,-2.82,.48,.70,.28,.86,0,4.20)
-  addEllipsoidSurface(25,1.00,-2.82,.48,.70,.28,.86,0,4.55)
-  addEllipsoidSurface(45,-3.02,-2.48,.42,.68,.42,.72,0,4.90)
-  addEllipsoidSurface(40,3.02,-2.48,.42,.68,.42,.72,0,5.25)
-  if(pts.length!==BODY_COUNT)throw new Error('Gorilla skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  function addSlanted(count,ax,ay,bx,by,width,depth,offset){
+    const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len
+    for(let i=0;i<count;i++){
+      const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
+      pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))
+    }
+  }
+  const stem=Math.round(BODY_COUNT*.60),base=Math.round(BODY_COUNT*.25),cap=BODY_COUNT-stem-base
+  addBox(stem,0,.05,0,.82,4.55,.92,0)
+  addBox(base,0,-2.28,0,2.65,.58,.92,10000)
+  addSlanted(cap,-.92,1.78,-.05,2.62,.62,.92,20000)
+  if(pts.length!==BODY_COUNT)throw new Error('Digit 1 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
 
@@ -178,9 +171,9 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),gorillaCenters=makeGorillaCenters(),centers=sphereCenters.map(p=>p.clone())
-const GORILLA_MORPH_START=1,GORILLA_MORPH_DURATION=3
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-GORILLA_MORPH_START)/GORILLA_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],gorillaCenters[i],s);updateCells()}
+const sphereCenters=makeBodyCenters(),digitOneCenters=makeDigitOneCenters(),centers=sphereCenters.map(p=>p.clone())
+const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitOneCenters[i],s);updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
