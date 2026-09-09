@@ -59,23 +59,18 @@ function makeBodyCenters(){
   )
   return p
 }
-function makeDigitThreeCenters(){
+function makeDigitFourCenters(){
   const pts=[]
   function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-  function addCurve(count,points,width,depth,offset){
-    const seg=[];let total=0
-    for(let j=0;j<points.length-1;j++){const a=points[j],b=points[j+1],l=Math.hypot(b[0]-a[0],b[1]-a[1]);seg.push(l);total+=l}
-    for(let i=0;i<count;i++){
-      const k=i+1+offset,target=halton(k,2)*total,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth
-      let acc=0,j=0;while(j<seg.length-1&&acc+seg[j]<target){acc+=seg[j];j++}
-      const a=points[j],b=points[j+1],u=(target-acc)/seg[j],dx=b[0]-a[0],dy=b[1]-a[1],len=seg[j],nx=-dy/len,ny=dx/len
-      pts.push(new THREE.Vector3(a[0]+dx*u+nx*side,a[1]+dy*u+ny*side,z))
-    }
+  function addStroke(count,ax,ay,bx,by,width,depth,offset){
+    const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len
+    for(let i=0;i<count;i++){const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))}
   }
-  const upper=Math.round(BODY_COUNT*.49),lower=BODY_COUNT-upper
-  addCurve(upper,[[-1.18,2.10],[-.62,2.43],[.20,2.48],[.88,2.24],[1.18,1.78],[1.12,1.25],[.78,.72],[.18,.38],[-.52,.30]],.66,.92,0)
-  addCurve(lower,[[-.42,.28],[.24,.20],[.84,-.08],[1.16,-.58],[1.20,-1.15],[.98,-1.72],[.50,-2.10],[-.18,-2.28],[-.88,-2.12],[-1.28,-1.82]],.68,.92,10000)
-  if(pts.length!==BODY_COUNT)throw new Error('Digit 3 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  const diag=Math.round(BODY_COUNT*.32),bar=Math.round(BODY_COUNT*.28),stem=BODY_COUNT-diag-bar
+  addStroke(diag,-1.28,.18,.42,2.48,.64,.92,0)
+  addStroke(bar,-1.30,.05,1.34,.05,.62,.92,10000)
+  addStroke(stem,.48,2.48,.48,-2.28,.66,.92,20000)
+  if(pts.length!==BODY_COUNT)throw new Error('Digit 4 skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
 
@@ -167,9 +162,9 @@ const flashTexture=makeFlashTexture(),flashes=[]
 function addDirectionalFlashes(o,i,kind){const level=opinionLevels[i]/100,max=1,radius=kind?1.10:6.18,baseSize=kind?.07:.42;for(let j=0;j<max;j++){const mat=new THREE.SpriteMaterial({map:flashTexture,color:0xffffff,transparent:true,opacity:0,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}),sp=new THREE.Sprite(mat);sp.layers.set(bloomLayer);sp.visible=false;o.add(sp);flashes.push({sp,o,level,radius,baseSize,normal:new THREE.Vector3(),wait:Math.random()*(2.6-2.1*level),age:99,duration:.045})}}
 function fire(f){f.normal.copy(randomDirection());f.sp.position.copy(f.normal).multiplyScalar(f.radius);f.age=0;f.duration=.035+Math.random()*.045;const activity=.12+.88*f.level*f.level;f.wait=.12+Math.random()*(2.8-2.55*activity);f.sp.visible=true}
 
-const sphereCenters=makeBodyCenters(),digitThreeCenters=makeDigitThreeCenters(),centers=sphereCenters.map(p=>p.clone())
+const sphereCenters=makeBodyCenters(),digitFourCenters=makeDigitFourCenters(),centers=sphereCenters.map(p=>p.clone())
 const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5
-function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitThreeCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}
+function updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],digitFourCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}
 const homeSlots=Array.from({length:BODY_COUNT},(_,i)=>i)
 const capacityIds=shuffledAssignments(BODY_COUNT,BODY_COUNT),capacityMask=new Array(BODY_COUNT).fill(false)
 for(let i=0;i<Math.round(BODY_COUNT*CAPACITES);i++)capacityMask[capacityIds[i]]=true
