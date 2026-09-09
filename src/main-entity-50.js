@@ -8,7 +8,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js'
 import './style.css'
 
-const BODY_COUNT=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
+const BASE_BODY_COUNT=200,BODY_COUNT=201,NEW_BALL_INDEX=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50
 const app=document.querySelector('#app'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true})
 renderer.setPixelRatio(Math.min(devicePixelRatio,2))
 renderer.setSize(innerWidth,innerHeight)
@@ -62,9 +62,12 @@ solarHalo.position.copy(birthPosition)
 solarHalo.layers.enable(1)
 birthGroup.add(solarHalo)
 const birthStart=performance.now()/1000
+const birthGoldColor=new THREE.Color(0xffc928)
+const birthHoldEnd=6.85,birthJoinDuration=2.6
+const birthJoinStartWorld=new THREE.Vector3(),birthJoinTargetWorld=new THREE.Vector3(),birthJoinTargetLocal=new THREE.Vector3()
+let birthJoinStarted=false,birthIntegrated=false,birthNormalColor=null,birthStartEcart=0,birthFlashAdded=false
 function updateNewMarbleBirth(now){
   const t=now-birthStart-10
-  // For the first 10 seconds: ENTITY alone, no light and no marble.
   birthMarble.visible=t>=1.8
   if(t<0){
     birthPoint.visible=false
@@ -82,7 +85,7 @@ function updateNewMarbleBirth(now){
     const u=THREE.MathUtils.smoothstep(t,0,1.8)
     birthPoint.visible=true
     birthPoint.scale.setScalar(.8+u*5.2)
-    birthLight.intensity=40+560*u
+    birthLight.intensity=30+420*u
     birthMarble.scale.setScalar(.001)
     solarCoreMaterial.opacity=.15+.62*u
     solarCoronaMaterial.opacity=.08+.34*u
@@ -90,11 +93,13 @@ function updateNewMarbleBirth(now){
     solarCore.scale.setScalar(.35+1.75*u)
     solarCorona.scale.setScalar(.9+2.7*u)
     solarHalo.scale.setScalar(1.8+4.4*u)
-  }else if(t<3.85){
+    return
+  }
+  if(t<3.85){
     const u=(t-1.8)/2.05
     const e=1-Math.pow(1-u,3)
     birthPoint.visible=u<.16
-    birthLight.intensity=820*(1-.55*u)+220
+    birthLight.intensity=620*(1-.55*u)+160
     birthMarble.scale.setScalar(Math.max(.001,THREE.MathUtils.smoothstep(u,.04,.52)*controls.TAILLE_BILLES))
     solarCoreMaterial.opacity=.95*(1-u)+.12
     solarCoronaMaterial.opacity=.62*(1-u)+.10
@@ -102,20 +107,68 @@ function updateNewMarbleBirth(now){
     solarCore.scale.setScalar(2.1+e*2.8)
     solarCorona.scale.setScalar(3.8+e*6.4)
     solarHalo.scale.setScalar(6.3+e*10.5)
-  }else{
-    birthPoint.visible=false
-    const fade=Math.max(0,1-(t-3.85)/2.4)
-    solarCoreMaterial.opacity=.12*fade
-    solarCoronaMaterial.opacity=.10*fade
-    solarHaloMaterial.opacity=.05*fade
-    solarCore.scale.setScalar(4.9+2.2*(1-fade))
-    solarCorona.scale.setScalar(10.2+4.2*(1-fade))
-    solarHalo.scale.setScalar(16.8+6.2*(1-fade))
-    birthLight.intensity=220*fade
+    return
+  }
+  const fade=Math.max(0,1-(t-3.85)/2.4)
+  birthPoint.visible=false
+  solarCoreMaterial.opacity=.12*fade
+  solarCoronaMaterial.opacity=.10*fade
+  solarHaloMaterial.opacity=.05*fade
+  solarCore.scale.setScalar(4.9+2.2*(1-fade))
+  solarCorona.scale.setScalar(10.2+4.2*(1-fade))
+  solarHalo.scale.setScalar(16.8+6.2*(1-fade))
+  birthLight.intensity=160*fade
+  birthMarble.scale.setScalar(controls.TAILLE_BILLES)
+  if(t<birthHoldEnd)return
+  solarCoreMaterial.opacity=0
+  solarCoronaMaterial.opacity=0
+  solarHaloMaterial.opacity=0
+  birthLight.intensity=0
+  if(!birthJoinStarted){
+    birthJoinStarted=true
+    birthStartEcart=controls.ECART
+    birthMarble.updateWorldMatrix(true,false)
+    birthMarble.getWorldPosition(birthJoinStartWorld)
+    birthNormalColor=personalityColor(NEW_BALL_INDEX)
+  }
+  if(birthIntegrated)return
+  const u=Math.min(1,(t-birthHoldEnd)/birthJoinDuration),q=u*u*(3-2*u)
+  controls.ECART=THREE.MathUtils.lerp(birthStartEcart,birthStartEcart*Math.cbrt(BODY_COUNT/BASE_BODY_COUNT),q)
+  birthJoinTargetLocal.copy(centers[homeSlots[NEW_BALL_INDEX]]).multiplyScalar(controls.ECART)
+  birthJoinTargetWorld.copy(birthJoinTargetLocal)
+  entityGroup.updateMatrixWorld(true)
+  entityGroup.localToWorld(birthJoinTargetWorld)
+  birthMarble.position.copy(birthJoinStartWorld).lerp(birthJoinTargetWorld,q)
+  birthMarbleMaterial.color.copy(birthGoldColor).lerp(birthNormalColor,q)
+  birthMarbleMaterial.metalness=THREE.MathUtils.lerp(.92,.02,q)
+  birthMarbleMaterial.roughness=THREE.MathUtils.lerp(.20,1-controls.BRILLANCE,q)
+  birthMarbleMaterial.envMapIntensity=THREE.MathUtils.lerp(1.55,0,q)
+  if(u>=1){
+    entityGroup.attach(birthMarble)
+    birthMarble.position.copy(centers[homeSlots[NEW_BALL_INDEX]]).multiplyScalar(controls.ECART)
     birthMarble.scale.setScalar(controls.TAILLE_BILLES)
+    birthMarbleMaterial.color.copy(birthNormalColor)
+    birthMarbleMaterial.metalness=.02
+    birthMarbleMaterial.roughness=1-controls.BRILLANCE
+    birthMarbleMaterial.emissive.setHex(0x000000)
+    birthMarbleMaterial.emissiveIntensity=0
+    birthMarbleMaterial.envMap=null
+    birthMarbleMaterial.envMapIntensity=0
+    birthMarbleMaterial.needsUpdate=true
+    allMarbleMaterials.push(birthMarbleMaterial)
+    travel[NEW_BALL_INDEX].set(0,0,0)
+    directions[NEW_BALL_INDEX].copy(randomDirection())
+    wanderTargets[NEW_BALL_INDEX].copy(randomDirection())
+    wanderClocks[NEW_BALL_INDEX]=.8+Math.random()*2.4
+    birthIntegrated=true
+    cells[NEW_BALL_INDEX].visible=true
+    updateCells()
+    entityGroup.updateMatrixWorld(true)
+    birthMarble.getWorldPosition(prevKnowledgeWorld[NEW_BALL_INDEX])
+    if(!birthFlashAdded){addDirectionalFlashes(birthMarble,NEW_BALL_INDEX,null);birthFlashAdded=true}
+    window.parent?.postMessage({type:'ENTITY_NEW_MARBLE_INTEGRATED',serial:NEW_BALL_INDEX,total:BODY_COUNT},'*')
   }
 }
-
 
 const bloomLayer=1
 const bloomComposer=new EffectComposer(renderer)
@@ -139,7 +192,7 @@ function randomEncadredValue(t){if(Math.random()<.28)return Math.random()*100;re
 function forceExactMean(v,t){const r=v.slice(),d=t*r.length;for(let p=0;p<30;p++){const x=d-r.reduce((s,n)=>s+n,0);if(Math.abs(x)<1e-9)break;const e=r.map((n,i)=>((x>0&&n<100)||(x<0&&n>0))?i:-1).filter(i=>i>=0);if(!e.length)break;for(const i of e)r[i]=THREE.MathUtils.clamp(r[i]+x/e.length,0,100)}return r}
 function buildLevels(dom,a){const l=new Array(BODY_COUNT);for(let p=0;p<dom.length;p++){const ids=a.map((x,i)=>x===p?i:-1).filter(i=>i>=0),v=forceExactMean(ids.map(()=>randomEncadredValue(dom[p].level)),dom[p].level);ids.forEach((id,k)=>l[id]=v[k])}return l}
 function fibonacciShell(count,radius,phase,rotation){const pts=[],q=new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x,rotation.y,rotation.z));for(let i=0;i<count;i++){const y=1-(i+.5)*(2/count),rr=Math.sqrt(Math.max(0,1-y*y)),theta=i*goldenAngle+phase,p=new THREE.Vector3(Math.cos(theta)*rr,y,Math.sin(theta)*rr).multiplyScalar(radius);p.applyQuaternion(q);pts.push(p)}return pts}
-function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));return p}
+function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));p.push(new THREE.Vector3(-2.82,0,0));return p}
 
 const personality=personalityColors.map(color=>({color,level:50}))
 const assignments=shuffledAssignments(BODY_COUNT,10)
@@ -162,6 +215,7 @@ const tasteKinds=['wave','facets','orange','stripes','brick','bumps','waffle','t
 const tastes=tasteKinds.map(kind=>({level:50,kind}))
 const tasteAssignments=shuffledAssignments(BODY_COUNT,10),textureByIndex=new Map()
 for(let t=0;t<10;t++){const ids=tasteAssignments.map((a,i)=>a===t?i:-1).filter(i=>i>=0),count=Math.floor(ids.length*.5);for(let k=0;k<count;k++)textureByIndex.set(ids[k],tastes[t].kind)}
+textureByIndex.delete(NEW_BALL_INDEX)
 
 const opinions=Array.from({length:9},()=>({level:50}))
 const opinionAssignments=shuffledAssignments(BODY_COUNT,9),opinionLevels=buildLevels(opinions,opinionAssignments)
@@ -178,8 +232,8 @@ const migrationByBead=new Map()
 const transition={requested:false,serial:-1,state:'idle',nativeMigrationCaught:false,outAge:0,outDuration:3.6,returnAge:0,returnDuration:3.6}
 const transitionStartWorld=new THREE.Vector3(),transitionCurrentWorld=new THREE.Vector3(),transitionTargetWorld=new THREE.Vector3(),transitionLocal=new THREE.Vector3(),transitionCamPos=new THREE.Vector3(),transitionCamDir=new THREE.Vector3(),transitionReturnStartWorld=new THREE.Vector3(),transitionReturnTargetWorld=new THREE.Vector3()
 const marbleGeometry=new THREE.SphereGeometry(6,28,20),marbles=[],directions=[],travel=[],wanderTargets=[],wanderClocks=[],ownWorld=[]
-for(let i=0;i<BODY_COUNT;i++){const kind=textureByIndex.get(i),o=kind?makeFrozenTexture(kind,i):new THREE.Mesh(marbleGeometry,personalityMaterial(i));o.userData.textureUnitScale=kind?6:1;o.userData.serialId=i;o.scale.setScalar(controls.TAILLE_BILLES*o.userData.textureUnitScale);o.traverse(x=>{if(x.isMesh){x.castShadow=true;x.receiveShadow=true}});addDirectionalFlashes(o,i,kind);entityGroup.add(o);marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)})}
-function startCapacitySwap(){const eligible=[];for(let i=0;i<BODY_COUNT;i++)if(capacityMask[i]&&!migrationByBead.has(i))eligible.push(i);if(eligible.length<2)return;const a=eligible[Math.floor(Math.random()*eligible.length)];let b=a;while(b===a)b=eligible[Math.floor(Math.random()*eligible.length)];const slotA=homeSlots[a],slotB=homeSlots[b],fromA=centers[slotA].clone().multiplyScalar(controls.ECART),fromB=centers[slotB].clone().multiplyScalar(controls.ECART),toA=centers[slotB].clone().multiplyScalar(controls.ECART),toB=centers[slotA].clone().multiplyScalar(controls.ECART);travel[a].set(0,0,0);travel[b].set(0,0,0);migrationByBead.set(a,{from:fromA,to:toA,age:0,duration:1.7+Math.random()*.8,targetSlot:slotB,delay:0});migrationByBead.set(b,{from:fromB,to:toB,age:0,duration:1.7+Math.random()*.8,targetSlot:slotA,delay:.9+Math.random()*1.6});if(transition.requested&&transition.state==='idle'){transition.requested=false;transition.serial=a;transition.state='native';transition.nativeMigrationCaught=true;window.parent?.postMessage({type:'ENTITY_NATIVE_MIGRATION_CAUGHT',serial:a},'*')}}
+for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX){const o=birthMarble;o.userData.textureUnitScale=1;o.userData.serialId=i;marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)});continue}const kind=textureByIndex.get(i),o=kind?makeFrozenTexture(kind,i):new THREE.Mesh(marbleGeometry,personalityMaterial(i));o.userData.textureUnitScale=kind?6:1;o.userData.serialId=i;o.scale.setScalar(controls.TAILLE_BILLES*o.userData.textureUnitScale);o.traverse(x=>{if(x.isMesh){x.castShadow=true;x.receiveShadow=true}});addDirectionalFlashes(o,i,kind);entityGroup.add(o);marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)})}
+function startCapacitySwap(){const eligible=[];for(let i=0;i<BODY_COUNT;i++)if(capacityMask[i]&&!migrationByBead.has(i)&&(i!==NEW_BALL_INDEX||birthIntegrated))eligible.push(i);if(eligible.length<2)return;const a=eligible[Math.floor(Math.random()*eligible.length)];let b=a;while(b===a)b=eligible[Math.floor(Math.random()*eligible.length)];const slotA=homeSlots[a],slotB=homeSlots[b],fromA=centers[slotA].clone().multiplyScalar(controls.ECART),fromB=centers[slotB].clone().multiplyScalar(controls.ECART),toA=centers[slotB].clone().multiplyScalar(controls.ECART),toB=centers[slotA].clone().multiplyScalar(controls.ECART);travel[a].set(0,0,0);travel[b].set(0,0,0);migrationByBead.set(a,{from:fromA,to:toA,age:0,duration:1.7+Math.random()*.8,targetSlot:slotB,delay:0});migrationByBead.set(b,{from:fromB,to:toB,age:0,duration:1.7+Math.random()*.8,targetSlot:slotA,delay:.9+Math.random()*1.6});if(transition.requested&&transition.state==='idle'){transition.requested=false;transition.serial=a;transition.state='native';transition.nativeMigrationCaught=true;window.parent?.postMessage({type:'ENTITY_NATIVE_MIGRATION_CAUGHT',serial:a},'*')}}
 function worldToEntityLocal(world,out){entityGroup.updateMatrixWorld(true);out.copy(world);entityGroup.worldToLocal(out);return out}
 function updateMigration(i,dt){const m=migrationByBead.get(i);if(!m)return false;if(i===transition.serial&&transition.state==='outbound'){transition.outAge+=dt;camera.updateMatrixWorld(true);camera.getWorldPosition(transitionCamPos);camera.getWorldDirection(transitionCamDir);transitionTargetWorld.copy(transitionCamPos).addScaledVector(transitionCamDir,7.4);const t=Math.min(1,transition.outAge/transition.outDuration),s=t*t*(3-2*t);transitionCurrentWorld.copy(transitionStartWorld).lerp(transitionTargetWorld,s);marbles[i].position.copy(worldToEntityLocal(transitionCurrentWorld,transitionLocal));if(t>=1){transition.state='covered';window.parent?.postMessage({type:'ENTITY_TRANSITION_FULL',serial:i},'*')}return true}if(i===transition.serial&&transition.state==='returning'){transition.returnAge+=dt;const t=Math.min(1,transition.returnAge/transition.returnDuration),s=t*t*(3-2*t);transitionCurrentWorld.copy(transitionReturnStartWorld).lerp(transitionReturnTargetWorld,s);marbles[i].position.copy(worldToEntityLocal(transitionCurrentWorld,transitionLocal));if(t>=1){transition.state='done';marbles[i].visible=false;window.parent?.postMessage({type:'ENTITY_TRANSITION_DONE',serial:i},'*')}return true}if(m.delay>0){m.delay-=dt;return true}m.age+=dt;const t=Math.min(1,m.age/m.duration),s=t*t*(3-2*t),arc=Math.sin(Math.PI*t)*controls.ECART*.12,mid=m.from.clone().lerp(m.to,s),side=new THREE.Vector3().crossVectors(m.from,m.to);if(side.lengthSq()<1e-6)side.set(0,1,0);side.normalize().multiplyScalar(arc);marbles[i].position.copy(mid.add(side));if(i===transition.serial&&transition.state==='native'&&t>=.25){entityGroup.updateMatrixWorld(true);marbles[i].updateWorldMatrix(true,false);marbles[i].getWorldPosition(transitionStartWorld);transition.outAge=0;transition.state='outbound';window.parent?.postMessage({type:'ENTITY_TRANSITION_BEAD',serial:i},'*');return true}if(t>=1){homeSlots[i]=m.targetSlot;travel[i].set(0,0,0);directions[i].copy(randomDirection());wanderTargets[i].copy(randomDirection());wanderClocks[i]=.8+Math.random()*2.4;migrationByBead.delete(i)}return true}
 window.entityTransitionAPI={request(){if(transition.state!=='idle')return false;transition.requested=true;transition.nativeMigrationCaught=false;return true},returnToTarget(target){if(transition.state!=='covered'||transition.serial<0)return false;const bead=marbles[transition.serial];entityGroup.updateMatrixWorld(true);bead.updateWorldMatrix(true,false);bead.getWorldPosition(transitionReturnStartWorld);camera.updateMatrixWorld(true);camera.getWorldPosition(transitionCamPos);const ndc=new THREE.Vector3(target.x,target.y,0).unproject(camera),dir=ndc.sub(transitionCamPos).normalize();transitionReturnTargetWorld.copy(transitionCamPos).addScaledVector(dir,210);transition.returnAge=0;transition.state='returning';return true},state(){return{state:transition.state,serial:transition.serial,transitionRequested:transition.requested,nativeMigrationCaught:transition.nativeMigrationCaught}}}
@@ -190,14 +244,14 @@ const ambientLight=new THREE.HemisphereLight(0xffffff,0x30343b,controls.LUMIERE_
 
 const cellGroup=new THREE.Group();cellGroup.visible=controls.VOIR_CELLULES;entityGroup.add(cellGroup)
 const cellGeometry=new THREE.SphereGeometry(1,16,12),cellMaterial=new THREE.MeshBasicMaterial({color:0x7f8792,wireframe:true,transparent:true,opacity:.16,depthWrite:false})
-const cells=[];for(let i=0;i<BODY_COUNT;i++){const c=new THREE.Mesh(cellGeometry,cellMaterial);cellGroup.add(c);cells.push(c)}
-function updateCells(){const r=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT;for(let i=0;i<BODY_COUNT;i++){cells[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART);cells[i].scale.setScalar(r)}}
+const cells=[];for(let i=0;i<BODY_COUNT;i++){const c=new THREE.Mesh(cellGeometry,cellMaterial);if(i===NEW_BALL_INDEX)c.visible=false;cellGroup.add(c);cells.push(c)}
+function updateCells(){const r=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT;for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated){cells[i].visible=false;continue}cells[i].visible=true;cells[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART);cells[i].scale.setScalar(r)}}
 
 function makeHistoryHaloTexture(){const c=document.createElement('canvas');c.width=c.height=256;const ctx=c.getContext('2d'),g=ctx.createRadialGradient(128,128,0,128,128,128);g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.60,'rgba(255,255,255,0)');g.addColorStop(.66,'rgba(255,255,255,.30)');g.addColorStop(.76,'rgba(255,255,255,.16)');g.addColorStop(.88,'rgba(255,255,255,.06)');g.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=g;ctx.fillRect(0,0,256,256);const t=new THREE.CanvasTexture(c);t.minFilter=THREE.LinearFilter;t.magFilter=THREE.LinearFilter;t.generateMipmaps=false;return t}
-const haloTexture=makeHistoryHaloTexture(),historyIds=shuffledAssignments(BODY_COUNT,BODY_COUNT)
-for(let h=0;h<Math.round(BODY_COUNT*LEVEL);h++){const i=historyIds[h],o=marbles[i],halo=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTexture,color:personalityColor(i),transparent:true,opacity:.72,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}));halo.scale.setScalar(19.2/(o.userData.textureUnitScale||1));halo.renderOrder=0;o.add(halo)}
+const haloTexture=makeHistoryHaloTexture(),historyIds=shuffledAssignments(BASE_BODY_COUNT,BASE_BODY_COUNT)
+for(let h=0;h<Math.round(BASE_BODY_COUNT*LEVEL);h++){const i=historyIds[h],o=marbles[i],halo=new THREE.Sprite(new THREE.SpriteMaterial({map:haloTexture,color:personalityColor(i),transparent:true,opacity:.72,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,toneMapped:false}));halo.scale.setScalar(19.2/(o.userData.textureUnitScale||1));halo.renderOrder=0;o.add(halo)}
 
-const speedVariations=Array.from({length:BODY_COUNT},()=>rnd(.8,1.2)),svm=1/(speedVariations.reduce((s,v)=>s+v,0)/BODY_COUNT);for(let i=0;i<BODY_COUNT;i++)speedVariations[i]*=svm
+const speedVariations=Array.from({length:BASE_BODY_COUNT},()=>rnd(.8,1.2)),svm=1/(speedVariations.reduce((s,v)=>s+v,0)/BASE_BODY_COUNT);for(let i=0;i<BASE_BODY_COUNT;i++)speedVariations[i]*=svm;speedVariations.push(rnd(.8,1.2))
 const KNOWLEDGE_LEVEL=.50,KNOWLEDGE_ON=2.5,KNOWLEDGE_OFF_MIN=5,KNOWLEDGE_OFF_MAX=9,AFTERIMAGE_LIFE=3,AFTERIMAGE_SPACING=.42,AFTERIMAGE_SIZE=9.4,AFTERIMAGE_ALPHA=.27,AFTERIMAGE_PER_BEAD=220,AFTERIMAGE_CAPACITY=BODY_COUNT*AFTERIMAGE_PER_BEAD
 const knowledgeOffBase=()=>THREE.MathUtils.lerp(KNOWLEDGE_OFF_MAX,KNOWLEDGE_OFF_MIN,KNOWLEDGE_LEVEL),nextKnowledgeOff=()=>knowledgeOffBase()*rnd(.72,1.28)
 const afterPositions=new Float32Array(AFTERIMAGE_CAPACITY*3),afterColors=new Float32Array(AFTERIMAGE_CAPACITY*3),afterSizes=new Float32Array(AFTERIMAGE_CAPACITY),afterAlphas=new Float32Array(AFTERIMAGE_CAPACITY),afterAges=new Float32Array(AFTERIMAGE_CAPACITY),afterLives=new Float32Array(AFTERIMAGE_CAPACITY),afterAlive=new Uint8Array(AFTERIMAGE_CAPACITY),afterHeads=new Uint16Array(BODY_COUNT),knowledgeStates=[],prevKnowledgeWorld=[],trailWorld=new THREE.Vector3(),trailPrev=new THREE.Vector3(),trailEmitPos=new THREE.Vector3()
@@ -206,14 +260,14 @@ const afterMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,
 for(let i=0;i<BODY_COUNT;i++){const offDuration=nextKnowledgeOff();prevKnowledgeWorld.push(new THREE.Vector3());knowledgeStates.push({active:false,phase:Math.random()*offDuration,offDuration})}
 function emitAfterimage(i,p){const slot=i*AFTERIMAGE_PER_BEAD+afterHeads[i];afterHeads[i]=(afterHeads[i]+1)%AFTERIMAGE_PER_BEAD;const o=slot*3,c=personalityColor(i);afterPositions[o]=p.x;afterPositions[o+1]=p.y;afterPositions[o+2]=p.z;afterColors[o]=c.r;afterColors[o+1]=c.g;afterColors[o+2]=c.b;afterSizes[slot]=AFTERIMAGE_SIZE;afterAlphas[slot]=AFTERIMAGE_ALPHA;afterAges[slot]=0;afterLives[slot]=AFTERIMAGE_LIFE;afterAlive[slot]=1}
 function updateAfterimages(dt){for(let s=0;s<AFTERIMAGE_CAPACITY;s++){if(!afterAlive[s])continue;afterAges[s]+=dt;if(afterAges[s]>=afterLives[s]){afterAlive[s]=0;afterAlphas[s]=0;continue}const u=afterAges[s]/afterLives[s];afterAlphas[s]=AFTERIMAGE_ALPHA*Math.pow(1-u,1.42);afterSizes[s]=AFTERIMAGE_SIZE*(1-.06*u)}afterGeometry.attributes.iPos.needsUpdate=true;afterGeometry.attributes.iColor.needsUpdate=true;afterGeometry.attributes.iSize.needsUpdate=true;afterGeometry.attributes.iAlpha.needsUpdate=true}
-function updateKnowledgeTrails(dt){updateAfterimages(dt);for(let i=0;i<BODY_COUNT;i++){const s=knowledgeStates[i];marbles[i].getWorldPosition(trailWorld);trailPrev.copy(prevKnowledgeWorld[i]);const dist=trailWorld.distanceTo(trailPrev);s.phase+=dt;if(s.active&&s.phase>=KNOWLEDGE_ON){s.active=false;s.phase=0;s.offDuration=nextKnowledgeOff()}else if(!s.active&&s.phase>=s.offDuration){s.active=true;s.phase=0}if(s.active&&dist>.001){const n=Math.max(1,Math.ceil(dist/AFTERIMAGE_SPACING));for(let k=0;k<n;k++){trailEmitPos.copy(trailPrev).lerp(trailWorld,k/n);emitAfterimage(i,trailEmitPos)}}prevKnowledgeWorld[i].copy(trailWorld)}}
+function updateKnowledgeTrails(dt){updateAfterimages(dt);for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;const s=knowledgeStates[i];marbles[i].getWorldPosition(trailWorld);trailPrev.copy(prevKnowledgeWorld[i]);const dist=trailWorld.distanceTo(trailPrev);s.phase+=dt;if(s.active&&s.phase>=KNOWLEDGE_ON){s.active=false;s.phase=0;s.offDuration=nextKnowledgeOff()}else if(!s.active&&s.phase>=s.offDuration){s.active=true;s.phase=0}if(s.active&&dist>.001){const n=Math.max(1,Math.ceil(dist/AFTERIMAGE_SPACING));for(let k=0;k<n;k++){trailEmitPos.copy(trailPrev).lerp(trailWorld,k/n);emitAfterimage(i,trailEmitPos)}}prevKnowledgeWorld[i].copy(trailWorld)}}
 
-function updateLayout(){for(let i=0;i<BODY_COUNT;i++){marbles[i].scale.setScalar(controls.TAILLE_BILLES*marbles[i].userData.textureUnitScale);if(!migrationByBead.has(i))marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i])}for(const s of satellites)s.scale.setScalar(controls.TAILLE_BILLES);updateCells()}
-updateLayout();entityGroup.updateMatrixWorld(true);for(let i=0;i<BODY_COUNT;i++)marbles[i].getWorldPosition(prevKnowledgeWorld[i])
+function updateLayout(){for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;marbles[i].scale.setScalar(controls.TAILLE_BILLES*marbles[i].userData.textureUnitScale);if(!migrationByBead.has(i))marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i])}for(const s of satellites)s.scale.setScalar(controls.TAILLE_BILLES);updateCells()}
+updateLayout();entityGroup.updateMatrixWorld(true);for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;marbles[i].getWorldPosition(prevKnowledgeWorld[i])}
 
 const gui=new GUI({title:'ENTITY — NIVEAU MOYEN 50 %'});gui.add(controls,'RELATION_GLOBALE',0,100,1);gui.add(controls,'V1',0,5,.01);gui.add(controls,'ROTATION',0,2,.01);gui.add(controls,'FREQUENCE_INVERSIONS',0,12,.1);gui.add(controls,'BRILLANCE',0,1,.01).onChange(v=>allMarbleMaterials.forEach(m=>m.roughness=1-v));gui.add(controls,'INTENSITE_LUMIERE',0,8,.05).onChange(v=>cameraLight.intensity=v);gui.add(controls,'LUMIERE_AMBIANTE',0,4,.05).onChange(v=>ambientLight.intensity=v);gui.add(controls,'LIBERTE',0,.5,.01).onChange(updateCells);gui.add(controls,'CHEVAUCHEMENT',.5,2,.01).onChange(updateCells);gui.add(controls,'VOIR_CELLULES').onChange(v=>cellGroup.visible=v);gui.add(controls,'CAMERA',250,800,10).onChange(v=>camera.position.z=v)
 const label=document.createElement('div');label.textContent='ENTITY — 50 % sur les 8 domaines · mouvement cellule + réorganisation + halo + scintillements + connaissances';Object.assign(label.style,{position:'fixed',left:'14px',bottom:'12px',color:'#aaa',font:'12px Arial'});document.body.appendChild(label)
 
 const clock=new THREE.Clock(),inward=new THREE.Vector3(),steer=new THREE.Vector3(),worldN=new THREE.Vector3(),worldP=new THREE.Vector3(),toCamera=new THREE.Vector3(),axis=randomDirection(),dq=new THREE.Quaternion(),baseBackground=scene.background.clone(),bloomBackground=new THREE.Color(0x000000);let elapsed=0,sense=1,nextCapacityMove=4.5+Math.random()*5.5
-function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateNewMarbleBirth(performance.now()/1000);nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);updateKnowledgeTrails(dt);for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}scene.background=bloomBackground;camera.layers.set(bloomLayer);bloomComposer.render(dt);scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.render(dt);camera.layers.set(0)}animate()
+function animate(){requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);elapsed+=dt;updateNewMarbleBirth(performance.now()/1000);nextCapacityMove-=dt;if(nextCapacityMove<=0){startCapacitySwap();nextCapacityMove=4.5+Math.random()*5.5}for(const f of flashes){if(f.age<f.duration){f.age+=dt;f.o.getWorldQuaternion(dq);worldN.copy(f.normal).applyQuaternion(dq).normalize();f.sp.getWorldPosition(worldP);toCamera.copy(camera.position).sub(worldP).normalize();const facing=Math.max(0,worldN.dot(toCamera)),t=Math.min(1,f.age/f.duration),pulse=Math.pow(Math.sin(Math.PI*t),.22),visibility=Math.pow(facing,1.8);f.sp.material.opacity=Math.min(1,pulse*visibility*2.8);f.sp.scale.setScalar(f.baseSize*(1.1+6.2*pulse)*(.35+.65*visibility));if(f.age>=f.duration)f.sp.visible=false}else{f.wait-=dt;if(f.wait<=0)fire(f)}}const maxR=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT,gs=controls.V1*controls.ECART*.42*(1+controls.RELATION_GLOBALE/100);for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;if(wanderClocks[i]<=0){wanderClocks[i]=.8+Math.random()*2.4;wanderTargets[i]=randomDirection()}const d=travel[i].length(),ret=maxR>0?THREE.MathUtils.smoothstep(d/maxR,.55,1):1;inward.copy(travel[i]);if(inward.lengthSq()>0)inward.normalize().multiplyScalar(-1);steer.copy(wanderTargets[i]).multiplyScalar(.3).addScaledVector(inward,ret*1.55);directions[i].addScaledVector(steer,dt).normalize();travel[i].addScaledVector(directions[i],gs*speedVariations[i]*dt);if(maxR<=0){travel[i].set(0,0,0)}else if(travel[i].length()>maxR*.985){const normal=travel[i].clone().normalize(),outward=directions[i].dot(normal);if(outward>0){directions[i].addScaledVector(normal,-2*outward);directions[i].addScaledVector(randomDirection(),.12);directions[i].normalize()}else directions[i].addScaledVector(normal,-.18).normalize();travel[i].setLength(maxR*.955)}marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i]);const ow=ownWorld[i];marbles[i].rotateOnAxis(ow.axis,6*LEVEL*ow.variation*dt)}if(Math.random()<1-Math.exp(-(controls.FREQUENCE_INVERSIONS/60)*dt))sense*=-1;entityGroup.rotateOnWorldAxis(axis,controls.ROTATION*sense*dt);entityGroup.updateMatrixWorld(true);updateKnowledgeTrails(dt);for(let i=0;i<SATELLITE_COUNT;i++){const s=satelliteData[i],a=s.phase+elapsed*s.speed,p=new THREE.Vector3(Math.cos(a)*s.radius,0,Math.sin(a)*s.radius).applyEuler(new THREE.Euler(s.tiltX,0,s.tiltZ));satellites[i].position.copy(p)}scene.background=bloomBackground;camera.layers.set(bloomLayer);bloomComposer.render(dt);scene.background=(transition.state==='returning'||transition.state==='done')?null:baseBackground;camera.layers.set(0);camera.layers.enable(bloomLayer);finalComposer.render(dt);camera.layers.set(0)}animate()
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);bloomComposer.setSize(innerWidth,innerHeight);finalComposer.setSize(innerWidth,innerHeight)})
