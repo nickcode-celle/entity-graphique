@@ -62,14 +62,29 @@ function makeBodyCenters(){
 function makeEmaeLogoCenters(){
   const pts=[]
   function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-  function addStroke(count,ax,ay,bx,by,width,depth,offset){const dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len;for(let i=0;i<count;i++){const k=i+1+offset,t=halton(k,2),side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth;pts.push(new THREE.Vector3(ax+dx*t+nx*side,ay+dy*t+ny*side,z))}}
-  function addLoop(count,cx,cy,rx,ry,width,depth,offset){for(let i=0;i<count;i++){const k=i+1+offset,a=halton(k,2)*Math.PI*2,side=(halton(k,3)-.5)*width,z=(halton(k,5)-.5)*depth,ca=Math.cos(a),sa=Math.sin(a),nx=ca/rx,ny=sa/ry,nl=Math.hypot(nx,ny);pts.push(new THREE.Vector3(cx+rx*ca+(nx/nl)*side,cy+ry*sa+(ny/nl)*side,z))}}
-  addStroke(22,-3.55,-1.55,-3.55,1.55,.36,.72,0);addStroke(12,-3.55,1.55,-2.25,1.55,.34,.72,1000);addStroke(12,-3.55,0,-2.42,0,.34,.72,2000);addStroke(12,-3.55,-1.55,-2.25,-1.55,.34,.72,3000)
-  addStroke(18,-1.75,-1.55,-1.75,1.55,.36,.72,4000);addStroke(18,-1.75,1.55,-.82,-.15,.36,.72,5000);addStroke(18,-.82,-.15,.10,1.55,.36,.72,6000);addStroke(18,.10,1.55,.10,-1.55,.36,.72,7000)
-  addStroke(24,.62,-1.55,1.55,1.55,.36,.72,8000);addStroke(24,1.55,1.55,2.05,-1.55,.36,.72,9000);addStroke(14,.92,-.05,2.78,-.05,.34,.72,10000);addStroke(12,1.55,1.55,2.92,1.55,.34,.72,11000);addStroke(12,2.05,-1.55,2.92,-1.55,.34,.72,12000);addStroke(12,2.18,.72,2.85,.72,.34,.72,13000)
-  addStroke(24,3.28,-1.55,3.88,1.55,.36,.72,14000);addStroke(24,3.88,1.55,4.48,-1.55,.36,.72,15000);addStroke(12,3.48,-.18,4.28,-.18,.34,.72,16000)
-  addLoop(6,3.62,2.18,.16,.16,.18,.55,17000);addLoop(6,4.14,2.18,.16,.16,.18,.55,18000)
-  if(pts.length!==BODY_COUNT)throw new Error('EMAE logo skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
+  function addBranch(count,side,offset){
+    for(let i=0;i<count;i++){
+      const k=i+1+offset,t=halton(k,2),u=halton(k,3)-.5,v=halton(k,5)-.5
+      const y=-2.05+t*4.15
+      const curve=1.48-1.03*t+.34*Math.sin(Math.PI*t)
+      const halfWidth=.48-.25*t
+      const x=side*(curve+u*halfWidth)
+      const z=v*(.95-.28*t)
+      pts.push(new THREE.Vector3(x,y,z))
+    }
+  }
+  function addDot(count,cx,cy,offset){
+    for(let i=0;i<count;i++){
+      const k=i+1+offset,a=halton(k,2)*Math.PI*2,z0=halton(k,3)*2-1,r=.34*Math.cbrt(halton(k,5)),q=Math.sqrt(Math.max(0,1-z0*z0))
+      pts.push(new THREE.Vector3(cx+r*q*Math.cos(a),cy+r*z0,r*q*Math.sin(a)))
+    }
+  }
+  const dots=30,branches=BODY_COUNT-dots,left=Math.floor(branches/2),right=branches-left
+  addBranch(left,-1,0)
+  addBranch(right,1,10000)
+  addDot(15,-.48,2.83,20000)
+  addDot(15,.48,2.83,30000)
+  if(pts.length!==BODY_COUNT)throw new Error('EMAE symbol skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
   return pts
 }
 
