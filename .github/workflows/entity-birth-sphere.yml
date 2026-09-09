@@ -1,0 +1,27 @@
+name: Build sphere golden marble birth test
+on:
+  push:
+    branches: [entity-new-marble-birth-sphere-v1]
+    paths: [tools/patch_birth_sphere.py,.github/workflows/entity-birth-sphere.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-new-marble-birth-sphere-v1
+          fetch-depth: 0
+      - name: Apply sphere birth patch
+        run: python3 tools/patch_birth_sphere.py
+      - name: Build
+        run: npm install --no-package-lock --no-audit --no-fund && npm run build
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m "Prototype golden marble birth on spherical ENTITY"
+          git push origin HEAD:entity-new-marble-birth-sphere-v1
