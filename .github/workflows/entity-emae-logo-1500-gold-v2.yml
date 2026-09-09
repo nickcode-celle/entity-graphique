@@ -1,0 +1,60 @@
+name: EMAE 1500 gold v2
+on:
+  push:
+    branches: [entity-emae-logo-1500-gold-v2]
+    paths: ['.github/workflows/entity-emae-logo-1500-gold-v2.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-emae-logo-1500-gold-v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Patch only validated logo scaling and validated gold rendering
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              n=s.count(old)
+              if n!=1: raise SystemExit(f'STOP: {label} anchor count={n}')
+              s=s.replace(old,new,1)
+          one("import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'\n",
+              "import {OutputPass} from 'three/addons/postprocessing/OutputPass.js'\nimport {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js'\n",
+              'RoomEnvironment import')
+          one("const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:300,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50",
+              "const TEST_COUNTS=[300,500,750,760,775,800,875,1000,1500,2000];const requestedCount=Number(new URLSearchParams(location.search).get('balls'));const BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1500,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50",
+              '1500 default')
+          one("app.appendChild(renderer.domElement)\n\nconst scene=new THREE.Scene()",
+              "app.appendChild(renderer.domElement)\nconst emaeGoldPMREM=new THREE.PMREMGenerator(renderer)\nconst emaeGoldEnv=emaeGoldPMREM.fromScene(new RoomEnvironment(),.04).texture\nemaeGoldPMREM.dispose()\n\nconst scene=new THREE.Scene()",
+              'validated gold environment')
+          one("const sphereCenters=makeBodyCenters(),emaeLogoCenters=makeEmaeLogoCenters(),centers=sphereCenters.map(p=>p.clone())",
+              "const sphereCenters=makeBodyCenters(),emaeLogoCenters=makeEmaeLogoCenters().map(p=>p.multiplyScalar(Math.sqrt(BODY_COUNT/300))),centers=sphereCenters.map(p=>p.clone())",
+              'logo density scale')
+          old="const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5\nfunction updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1){const tierGreen=new THREE.Color(0x28c95b);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(tierGreen);marbles[i].material.needsUpdate=true}}updateCells()}"
+          new="const DIGIT_MORPH_START=1,DIGIT_MORPH_DURATION=5\nlet emaeGoldApplied=false\nfunction applyValidatedEmaeGold(){if(emaeGoldApplied||!marbleRenderBatches)return;for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.set(0xffffff);marbles[i].material.needsUpdate=true}const batches=new Set(marbleRenderBatches.map(o=>o.userData.renderBatch));for(const batch of batches){batch.material.color.set(0xffc928);batch.material.metalness=.92;batch.material.roughness=.20;batch.material.envMap=emaeGoldEnv;batch.material.envMapIntensity=1.55;batch.material.emissive.set(0x000000);batch.material.emissiveIntensity=0;batch.material.needsUpdate=true}emaeGoldApplied=true}\nfunction updateSkeletonMorph(){const t=THREE.MathUtils.clamp((elapsed-DIGIT_MORPH_START)/DIGIT_MORPH_DURATION,0,1),s=t*t*(3-2*t);for(let i=0;i<BODY_COUNT;i++)centers[i].lerpVectors(sphereCenters[i],emaeLogoCenters[i],s);if(t>=1)applyValidatedEmaeGold();updateCells()}"
+          one(old,new,'validated green logo morph endpoint')
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify exact references
+        run: |
+          grep -F 'BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1500' src/main-entity-50.js
+          grep -F 'makeEmaeLogoCenters().map(p=>p.multiplyScalar(Math.sqrt(BODY_COUNT/300)))' src/main-entity-50.js
+          grep -F 'emaeGoldPMREM.fromScene(new RoomEnvironment(),.04).texture' src/main-entity-50.js
+          grep -F 'batch.material.color.set(0xffc928);batch.material.metalness=.92;batch.material.roughness=.20;batch.material.envMap=emaeGoldEnv;batch.material.envMapIntensity=1.55' src/main-entity-50.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Render 1500-ball EMAE with validated logo geometry and gold material'
+          git push origin HEAD:entity-emae-logo-1500-gold-v2
