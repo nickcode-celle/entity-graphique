@@ -26,7 +26,7 @@ scene.add(entityGroup)
 // NEW_MARBLE_BIRTH_SPHERE_TEST
 const birthGroup=new THREE.Group()
 scene.add(birthGroup)
-const birthPosition=new THREE.Vector3(72,8,18)
+const birthPosition=new THREE.Vector3(128,18,48)
 const birthPointMaterial=new THREE.MeshBasicMaterial({color:0xfff4b0,transparent:true,opacity:1})
 const birthPoint=new THREE.Mesh(new THREE.SphereGeometry(.18,20,20),birthPointMaterial)
 birthPoint.position.copy(birthPosition)
