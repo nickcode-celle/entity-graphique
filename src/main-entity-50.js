@@ -26,7 +26,7 @@ scene.add(entityGroup)
 // NEW_MARBLE_BIRTH_SPHERE_TEST
 const birthGroup=new THREE.Group()
 scene.add(birthGroup)
-const birthPosition=new THREE.Vector3(-128,0,0)
+const birthPosition=new THREE.Vector3(-142,0,0)
 const birthPointMaterial=new THREE.MeshBasicMaterial({color:0xfff4b0,transparent:true,opacity:1})
 const birthPoint=new THREE.Mesh(new THREE.SphereGeometry(.18,20,20),birthPointMaterial)
 birthPoint.position.copy(birthPosition)
@@ -35,7 +35,7 @@ birthGroup.add(birthPoint)
 const birthLight=new THREE.PointLight(0xffd75b,0,90,2)
 birthLight.position.copy(birthPosition)
 scene.add(birthLight)
-const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xd7a52a,metalness:.72,roughness:.20,emissive:0x7a4a00,emissiveIntensity:.16})
+const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.82,roughness:.16,emissive:0x2f2100,emissiveIntensity:.07})
 const birthMarble=new THREE.Mesh(new THREE.SphereGeometry(6,28,20),birthMarbleMaterial)
 birthMarble.position.copy(birthPosition)
 birthMarble.scale.setScalar(.001)
@@ -86,8 +86,8 @@ function updateNewMarbleBirth(now){
     solarCore.scale.setScalar(.35+1.75*u)
     solarCorona.scale.setScalar(.9+2.7*u)
     solarHalo.scale.setScalar(1.8+4.4*u)
-  }else if(t<4.15){
-    const u=(t-1.8)/2.35
+  }else if(t<3.85){
+    const u=(t-1.8)/2.05
     const e=1-Math.pow(1-u,3)
     birthPoint.visible=u<.16
     birthLight.intensity=820*(1-.55*u)+220
@@ -100,7 +100,7 @@ function updateNewMarbleBirth(now){
     solarHalo.scale.setScalar(6.3+e*10.5)
   }else{
     birthPoint.visible=false
-    const fade=Math.max(0,1-(t-4.15)/3.8)
+    const fade=Math.max(0,1-(t-3.85)/2.4)
     solarCoreMaterial.opacity=.12*fade
     solarCoronaMaterial.opacity=.10*fade
     solarHaloMaterial.opacity=.05*fade
