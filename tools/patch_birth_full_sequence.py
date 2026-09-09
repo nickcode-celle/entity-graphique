@@ -1,0 +1,182 @@
+from pathlib import Path
+
+p=Path('src/main-entity-50.js')
+s=p.read_text()
+
+def one(old,new,label):
+    global s
+    if old not in s:
+        raise SystemExit(f'STOP: anchor missing: {label}')
+    if s.count(old)!=1:
+        raise SystemExit(f'STOP: anchor not unique: {label} ({s.count(old)})')
+    s=s.replace(old,new,1)
+
+one(
+  'const BODY_COUNT=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50',
+  'const BASE_BODY_COUNT=200,BODY_COUNT=201,NEW_BALL_INDEX=200,SATELLITE_COUNT=5,LEVEL=.50,CAPACITES=.50',
+  'body count')
+
+old_centers="function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));return p}"
+new_centers="function makeBodyCenters(){const p=[new THREE.Vector3()];p.push(...fibonacciShell(12,.95,.18,new THREE.Vector3(.22,-.14,.31)),...fibonacciShell(32,1.58,1.07,new THREE.Vector3(-.31,.27,.11)),...fibonacciShell(56,2.18,2.16,new THREE.Vector3(.17,.39,-.26)),...fibonacciShell(99,2.82,2.91,new THREE.Vector3(-.21,-.28,.37)));p.push(new THREE.Vector3(-2.82,0,0));return p}"
+one(old_centers,new_centers,'201st skeleton center')
+
+one(
+  "for(let t=0;t<10;t++){const ids=tasteAssignments.map((a,i)=>a===t?i:-1).filter(i=>i>=0),count=Math.floor(ids.length*.5);for(let k=0;k<count;k++)textureByIndex.set(ids[k],tastes[t].kind)}",
+  "for(let t=0;t<10;t++){const ids=tasteAssignments.map((a,i)=>a===t?i:-1).filter(i=>i>=0),count=Math.floor(ids.length*.5);for(let k=0;k<count;k++)textureByIndex.set(ids[k],tastes[t].kind)}\ntextureByIndex.delete(NEW_BALL_INDEX)",
+  'new bead plain geometry')
+
+old_loop="for(let i=0;i<BODY_COUNT;i++){const kind=textureByIndex.get(i),o=kind?makeFrozenTexture(kind,i):new THREE.Mesh(marbleGeometry,personalityMaterial(i));o.userData.textureUnitScale=kind?6:1;o.userData.serialId=i;o.scale.setScalar(controls.TAILLE_BILLES*o.userData.textureUnitScale);o.traverse(x=>{if(x.isMesh){x.castShadow=true;x.receiveShadow=true}});addDirectionalFlashes(o,i,kind);entityGroup.add(o);marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)})}"
+new_loop="for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX){const o=birthMarble;o.userData.textureUnitScale=1;o.userData.serialId=i;marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)});continue}const kind=textureByIndex.get(i),o=kind?makeFrozenTexture(kind,i):new THREE.Mesh(marbleGeometry,personalityMaterial(i));o.userData.textureUnitScale=kind?6:1;o.userData.serialId=i;o.scale.setScalar(controls.TAILLE_BILLES*o.userData.textureUnitScale);o.traverse(x=>{if(x.isMesh){x.castShadow=true;x.receiveShadow=true}});addDirectionalFlashes(o,i,kind);entityGroup.add(o);marbles.push(o);directions.push(randomDirection());travel.push(new THREE.Vector3());wanderTargets.push(randomDirection());wanderClocks.push(Math.random()*2.5);ownWorld.push({axis:randomDirection(),variation:rnd(.85,1.15)})}"
+one(old_loop,new_loop,'reuse exact newborn mesh')
+
+one(
+  "function startCapacitySwap(){const eligible=[];for(let i=0;i<BODY_COUNT;i++)if(capacityMask[i]&&!migrationByBead.has(i))eligible.push(i);",
+  "function startCapacitySwap(){const eligible=[];for(let i=0;i<BODY_COUNT;i++)if(capacityMask[i]&&!migrationByBead.has(i)&&(i!==NEW_BALL_INDEX||birthIntegrated))eligible.push(i);",
+  'capacity excludes unborn bead')
+
+one(
+  "const cells=[];for(let i=0;i<BODY_COUNT;i++){const c=new THREE.Mesh(cellGeometry,cellMaterial);cellGroup.add(c);cells.push(c)}\nfunction updateCells(){const r=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT;for(let i=0;i<BODY_COUNT;i++){cells[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART);cells[i].scale.setScalar(r)}}",
+  "const cells=[];for(let i=0;i<BODY_COUNT;i++){const c=new THREE.Mesh(cellGeometry,cellMaterial);if(i===NEW_BALL_INDEX)c.visible=false;cellGroup.add(c);cells.push(c)}\nfunction updateCells(){const r=controls.ECART*controls.LIBERTE*controls.CHEVAUCHEMENT;for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated){cells[i].visible=false;continue}cells[i].visible=true;cells[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART);cells[i].scale.setScalar(r)}}",
+  'new cell activation')
+
+one(
+  "const haloTexture=makeHistoryHaloTexture(),historyIds=shuffledAssignments(BODY_COUNT,BODY_COUNT)\nfor(let h=0;h<Math.round(BODY_COUNT*LEVEL);h++){",
+  "const haloTexture=makeHistoryHaloTexture(),historyIds=shuffledAssignments(BASE_BODY_COUNT,BASE_BODY_COUNT)\nfor(let h=0;h<Math.round(BASE_BODY_COUNT*LEVEL);h++){",
+  'preserve initial 200 halos')
+
+one(
+  "const speedVariations=Array.from({length:BODY_COUNT},()=>rnd(.8,1.2)),svm=1/(speedVariations.reduce((s,v)=>s+v,0)/BODY_COUNT);for(let i=0;i<BODY_COUNT;i++)speedVariations[i]*=svm",
+  "const speedVariations=Array.from({length:BASE_BODY_COUNT},()=>rnd(.8,1.2)),svm=1/(speedVariations.reduce((s,v)=>s+v,0)/BASE_BODY_COUNT);for(let i=0;i<BASE_BODY_COUNT;i++)speedVariations[i]*=svm;speedVariations.push(rnd(.8,1.2))",
+  'speed array 201')
+
+one(
+  "function updateKnowledgeTrails(dt){updateAfterimages(dt);for(let i=0;i<BODY_COUNT;i++){const s=knowledgeStates[i];",
+  "function updateKnowledgeTrails(dt){updateAfterimages(dt);for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;const s=knowledgeStates[i];",
+  'knowledge skip unborn')
+
+one(
+  "function updateLayout(){for(let i=0;i<BODY_COUNT;i++){marbles[i].scale.setScalar(controls.TAILLE_BILLES*marbles[i].userData.textureUnitScale);if(!migrationByBead.has(i))marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i])}for(const s of satellites)s.scale.setScalar(controls.TAILLE_BILLES);updateCells()}\nupdateLayout();entityGroup.updateMatrixWorld(true);for(let i=0;i<BODY_COUNT;i++)marbles[i].getWorldPosition(prevKnowledgeWorld[i])",
+  "function updateLayout(){for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;marbles[i].scale.setScalar(controls.TAILLE_BILLES*marbles[i].userData.textureUnitScale);if(!migrationByBead.has(i))marbles[i].position.copy(centers[homeSlots[i]]).multiplyScalar(controls.ECART).add(travel[i])}for(const s of satellites)s.scale.setScalar(controls.TAILLE_BILLES);updateCells()}\nupdateLayout();entityGroup.updateMatrixWorld(true);for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;marbles[i].getWorldPosition(prevKnowledgeWorld[i])}",
+  'layout skip unborn')
+
+one(
+  "for(let i=0;i<BODY_COUNT;i++){if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;",
+  "for(let i=0;i<BODY_COUNT;i++){if(i===NEW_BALL_INDEX&&!birthIntegrated)continue;if(updateMigration(i,dt))continue;wanderClocks[i]-=dt;",
+  'movement skip unborn')
+
+start=s.find('const birthStart=performance.now()/1000')
+end=s.find('\n\nconst bloomLayer=1',start)
+if start<0 or end<0:
+    raise SystemExit('STOP: birth function block boundaries not found')
+
+new_block=r'''const birthStart=performance.now()/1000
+const birthGoldColor=new THREE.Color(0xffc928)
+const birthHoldEnd=6.85,birthJoinDuration=2.6
+const birthJoinStartWorld=new THREE.Vector3(),birthJoinTargetWorld=new THREE.Vector3(),birthJoinTargetLocal=new THREE.Vector3()
+let birthJoinStarted=false,birthIntegrated=false,birthNormalColor=null,birthStartEcart=0,birthFlashAdded=false
+function updateNewMarbleBirth(now){
+  const t=now-birthStart-10
+  birthMarble.visible=t>=1.8
+  if(t<0){
+    birthPoint.visible=false
+    birthLight.intensity=0
+    solarCoreMaterial.opacity=0
+    solarCoronaMaterial.opacity=0
+    solarHaloMaterial.opacity=0
+    solarCore.scale.setScalar(.001)
+    solarCorona.scale.setScalar(.001)
+    solarHalo.scale.setScalar(.001)
+    birthMarble.visible=false
+    return
+  }
+  if(t<1.8){
+    const u=THREE.MathUtils.smoothstep(t,0,1.8)
+    birthPoint.visible=true
+    birthPoint.scale.setScalar(.8+u*5.2)
+    birthLight.intensity=30+420*u
+    birthMarble.scale.setScalar(.001)
+    solarCoreMaterial.opacity=.15+.62*u
+    solarCoronaMaterial.opacity=.08+.34*u
+    solarHaloMaterial.opacity=.03+.16*u
+    solarCore.scale.setScalar(.35+1.75*u)
+    solarCorona.scale.setScalar(.9+2.7*u)
+    solarHalo.scale.setScalar(1.8+4.4*u)
+    return
+  }
+  if(t<3.85){
+    const u=(t-1.8)/2.05
+    const e=1-Math.pow(1-u,3)
+    birthPoint.visible=u<.16
+    birthLight.intensity=620*(1-.55*u)+160
+    birthMarble.scale.setScalar(Math.max(.001,THREE.MathUtils.smoothstep(u,.04,.52)*controls.TAILLE_BILLES))
+    solarCoreMaterial.opacity=.95*(1-u)+.12
+    solarCoronaMaterial.opacity=.62*(1-u)+.10
+    solarHaloMaterial.opacity=.38*(1-u)+.05
+    solarCore.scale.setScalar(2.1+e*2.8)
+    solarCorona.scale.setScalar(3.8+e*6.4)
+    solarHalo.scale.setScalar(6.3+e*10.5)
+    return
+  }
+  const fade=Math.max(0,1-(t-3.85)/2.4)
+  birthPoint.visible=false
+  solarCoreMaterial.opacity=.12*fade
+  solarCoronaMaterial.opacity=.10*fade
+  solarHaloMaterial.opacity=.05*fade
+  solarCore.scale.setScalar(4.9+2.2*(1-fade))
+  solarCorona.scale.setScalar(10.2+4.2*(1-fade))
+  solarHalo.scale.setScalar(16.8+6.2*(1-fade))
+  birthLight.intensity=160*fade
+  birthMarble.scale.setScalar(controls.TAILLE_BILLES)
+  if(t<birthHoldEnd)return
+  solarCoreMaterial.opacity=0
+  solarCoronaMaterial.opacity=0
+  solarHaloMaterial.opacity=0
+  birthLight.intensity=0
+  if(!birthJoinStarted){
+    birthJoinStarted=true
+    birthStartEcart=controls.ECART
+    birthMarble.updateWorldMatrix(true,false)
+    birthMarble.getWorldPosition(birthJoinStartWorld)
+    birthNormalColor=personalityColor(NEW_BALL_INDEX)
+  }
+  if(birthIntegrated)return
+  const u=Math.min(1,(t-birthHoldEnd)/birthJoinDuration),q=u*u*(3-2*u)
+  controls.ECART=THREE.MathUtils.lerp(birthStartEcart,birthStartEcart*Math.cbrt(BODY_COUNT/BASE_BODY_COUNT),q)
+  birthJoinTargetLocal.copy(centers[homeSlots[NEW_BALL_INDEX]]).multiplyScalar(controls.ECART)
+  birthJoinTargetWorld.copy(birthJoinTargetLocal)
+  entityGroup.updateMatrixWorld(true)
+  entityGroup.localToWorld(birthJoinTargetWorld)
+  birthMarble.position.copy(birthJoinStartWorld).lerp(birthJoinTargetWorld,q)
+  birthMarbleMaterial.color.copy(birthGoldColor).lerp(birthNormalColor,q)
+  birthMarbleMaterial.metalness=THREE.MathUtils.lerp(.92,.02,q)
+  birthMarbleMaterial.roughness=THREE.MathUtils.lerp(.20,1-controls.BRILLANCE,q)
+  birthMarbleMaterial.envMapIntensity=THREE.MathUtils.lerp(1.55,0,q)
+  if(u>=1){
+    entityGroup.attach(birthMarble)
+    birthMarble.position.copy(centers[homeSlots[NEW_BALL_INDEX]]).multiplyScalar(controls.ECART)
+    birthMarble.scale.setScalar(controls.TAILLE_BILLES)
+    birthMarbleMaterial.color.copy(birthNormalColor)
+    birthMarbleMaterial.metalness=.02
+    birthMarbleMaterial.roughness=1-controls.BRILLANCE
+    birthMarbleMaterial.emissive.setHex(0x000000)
+    birthMarbleMaterial.emissiveIntensity=0
+    birthMarbleMaterial.envMap=null
+    birthMarbleMaterial.envMapIntensity=0
+    birthMarbleMaterial.needsUpdate=true
+    allMarbleMaterials.push(birthMarbleMaterial)
+    travel[NEW_BALL_INDEX].set(0,0,0)
+    directions[NEW_BALL_INDEX].copy(randomDirection())
+    wanderTargets[NEW_BALL_INDEX].copy(randomDirection())
+    wanderClocks[NEW_BALL_INDEX]=.8+Math.random()*2.4
+    birthIntegrated=true
+    cells[NEW_BALL_INDEX].visible=true
+    updateCells()
+    entityGroup.updateMatrixWorld(true)
+    birthMarble.getWorldPosition(prevKnowledgeWorld[NEW_BALL_INDEX])
+    if(!birthFlashAdded){addDirectionalFlashes(birthMarble,NEW_BALL_INDEX,null);birthFlashAdded=true}
+    window.parent?.postMessage({type:'ENTITY_NEW_MARBLE_INTEGRATED',serial:NEW_BALL_INDEX,total:BODY_COUNT},'*')
+  }
+}'''
+
+s=s[:start]+new_block+s[end:]
+p.write_text(s)
