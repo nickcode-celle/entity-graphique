@@ -1,0 +1,57 @@
+name: EMAE 1500 validated reference fix
+on:
+  push:
+    branches: [entity-emae-logo-1500-gold-test-v1]
+    paths: ['.github/workflows/entity-emae-logo-1500-gold-reference-fix.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: entity-emae-logo-1500-gold-test-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Patch exact validated logo proportions and visible batched gold material
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main-entity-50.js')
+          s=p.read_text()
+          def one(old,new,label):
+              global s
+              if s.count(old)!=1:
+                  raise SystemExit(f'STOP: {label} anchor count = {s.count(old)}')
+              s=s.replace(old,new,1)
+
+          # Preserve the validated 300-ball logo component proportions at 1500 balls:
+          # 12 balls per dot at 300 => 60 per dot at 1500.
+          one(
+              "const dotEach=12,branchEach=(BODY_COUNT-dotEach*2)/2",
+              "const dotEach=Math.round(12*BODY_COUNT/300),branchEach=(BODY_COUNT-dotEach*2)/2",
+              'validated logo dot proportion'
+          )
+
+          old="if(t>=1){const gold=new THREE.Color(0xffc928);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(gold);marbles[i].material.metalness=.92;marbles[i].material.roughness=.20;marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55;marbles[i].material.needsUpdate=true}}"
+          new="if(t>=1){const gold=new THREE.Color(0xffc928);for(let i=0;i<BODY_COUNT;i++){marbles[i].material.color.copy(gold);marbles[i].material.metalness=.92;marbles[i].material.roughness=.20;marbles[i].material.envMap=emaeGoldEnv;marbles[i].material.envMapIntensity=1.55;marbles[i].material.needsUpdate=true}if(marbleRenderBatches){const seen=new Set();for(const o of marbleRenderBatches){const batch=o.userData.renderBatch;if(seen.has(batch))continue;seen.add(batch);batch.material.color.set(0xffffff);batch.material.metalness=.92;batch.material.roughness=.20;batch.material.envMap=emaeGoldEnv;batch.material.envMapIntensity=1.55;batch.material.needsUpdate=true}}}"
+          one(old,new,'validated visible gold rendering')
+          p.write_text(s)
+          PY
+      - run: npm install
+      - run: npm run build
+      - name: Verify exact reference state
+        run: |
+          grep -F 'const dotEach=Math.round(12*BODY_COUNT/300),branchEach=(BODY_COUNT-dotEach*2)/2' src/main-entity-50.js
+          grep -F 'batch.material.metalness=.92;batch.material.roughness=.20;batch.material.envMap=emaeGoldEnv;batch.material.envMapIntensity=1.55' src/main-entity-50.js
+          grep -F 'color:personalityColor(i),roughness:1-controls.BRILLANCE,metalness:.02' src/main-entity-50.js
+          grep -F 'BODY_COUNT=TEST_COUNTS.includes(requestedCount)?requestedCount:1500' src/main-entity-50.js
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main-entity-50.js
+          git commit -m 'Match validated 1500-ball EMAE logo and gold references'
+          git push origin HEAD:entity-emae-logo-1500-gold-test-v1
