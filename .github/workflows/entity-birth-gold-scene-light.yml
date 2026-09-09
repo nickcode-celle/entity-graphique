@@ -21,10 +21,10 @@ jobs:
           from pathlib import Path
           p=Path('src/main-entity-50.js')
           s=p.read_text()
-          old='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd700,metalness:1,roughness:.16,emissive:0x000000,emissiveIntensity:0})'
+          old='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.42,roughness:.20,emissive:0x6b4700,emissiveIntensity:.12})'
           new='const birthMarbleMaterial=new THREE.MeshStandardMaterial({color:0xffd84a,metalness:.38,roughness:.24,emissive:0xffc21a,emissiveIntensity:.10})'
           if old not in s:
-              raise SystemExit('STOP: exact black-gold material anchor not found')
+              raise SystemExit('STOP: exact current newborn material anchor not found')
           s=s.replace(old,new,1)
           p.write_text(s)
           PY
