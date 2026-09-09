@@ -13,7 +13,7 @@ jobs:
         with:
           ref: entity-emae-logo-test-v1
           fetch-depth: 0
-      - name: Match reference silhouette using only equal ENTITY ball centers
+      - name: Rebuild skeleton from validated reference silhouette only
         shell: bash
         run: |
           python3 - <<'PY'
@@ -24,28 +24,37 @@ jobs:
           fn="""function makeEmaeLogoCenters(){
             const pts=[]
             function halton(i,b){let f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
-            function addBranch(count,side,offset){
-              for(let i=0;i<count;i++){
-                const k=i+1+offset,t=halton(k,2),u=halton(k,3)-.5,v=halton(k,5)-.5
-                const y=-2.18+t*4.18
-                const center=.54+1.23*Math.pow(1-t,1.28)-.20*Math.sin(Math.PI*t)
-                const width=.24+.58*Math.pow(1-t,1.70)
-                const x=side*(center+u*width)
-                const z=v*(.88-.30*t)
-                pts.push(new THREE.Vector3(x,y,z))
+            function insidePolygon(x,y,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]))c=!c}return c}
+            function fillPolygon(count,poly,offset){
+              let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity
+              for(const p of poly){minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1])}
+              let k=1+offset
+              while(pts.length<count+offset){
+                const x=minX+(maxX-minX)*halton(k,2),y=minY+(maxY-minY)*halton(k,3)
+                if(insidePolygon(x,y,poly))pts.push(new THREE.Vector3(x,y,0))
+                k++
               }
             }
             function addDot(count,cx,cy,offset){
               for(let i=0;i<count;i++){
-                const k=i+1+offset,a=halton(k,2)*Math.PI*2,z0=halton(k,3)*2-1,r=.30*Math.cbrt(halton(k,5)),q=Math.sqrt(Math.max(0,1-z0*z0))
-                pts.push(new THREE.Vector3(cx+r*q*Math.cos(a),cy+r*z0,r*q*Math.sin(a)))
+                const k=i+1+offset,a=halton(k,2)*Math.PI*2,r=.34*Math.sqrt(halton(k,3))
+                pts.push(new THREE.Vector3(cx+Math.cos(a)*r,cy+Math.sin(a)*r,0))
               }
             }
-            const dotEach=12,branchTotal=BODY_COUNT-dotEach*2,left=Math.floor(branchTotal/2),right=branchTotal-left
-            addBranch(left,-1,0)
-            addBranch(right,1,10000)
-            addDot(dotEach,-.54,2.73,20000)
-            addDot(dotEach,.54,2.73,30000)
+            const left=[[-1.95,-1.78],[-2.08,-1.42],[-2.03,-.98],[-1.85,-.50],[-1.64,.02],[-1.38,.54],[-1.08,1.02],[-.82,1.47],[-.62,1.78],[-.48,1.88],[-.38,1.78],[-.39,1.54],[-.52,1.20],[-.72,.82],[-.91,.42],[-1.06,.03],[-1.12,-.36],[-1.08,-.76],[-1.02,-1.13],[-1.08,-1.48],[-1.27,-1.78],[-1.58,-1.94],[-1.82,-1.91]]
+            const right=left.map(([x,y])=>[-x,y])
+            const dotEach=12,branchEach=(BODY_COUNT-dotEach*2)/2
+            if(!Number.isInteger(branchEach))throw new Error('EMAE branch count must be integer')
+            fillPolygon(branchEach,left,0)
+            const leftCount=pts.length
+            if(leftCount!==branchEach)throw new Error('EMAE left branch count mismatch: '+leftCount)
+            const rightStart=pts.length
+            let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity
+            for(const q of right){minX=Math.min(minX,q[0]);maxX=Math.max(maxX,q[0]);minY=Math.min(minY,q[1]);maxY=Math.max(maxY,q[1])}
+            let k=10001
+            while(pts.length<rightStart+branchEach){const x=minX+(maxX-minX)*halton(k,2),y=minY+(maxY-minY)*halton(k,3);if(insidePolygon(x,y,right))pts.push(new THREE.Vector3(x,y,0));k++}
+            addDot(dotEach,-.58,2.64,20000)
+            addDot(dotEach,.58,2.64,30000)
             if(pts.length!==BODY_COUNT)throw new Error('EMAE symbol skeleton count mismatch: '+pts.length+' / '+BODY_COUNT)
             return pts
           }"""
@@ -55,11 +64,11 @@ jobs:
           PY
       - name: Build
         run: npm install --no-package-lock --no-audit --no-fund && npm run build
-      - name: Commit reference-matched skeleton
+      - name: Commit exact-count reference skeleton
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/main-entity-50.js
-          git commit -m "Match EMAE reference silhouette with 300 equal balls"
+          git commit -m "Rebuild EMAE skeleton from reference silhouette"
           git push origin HEAD:entity-emae-logo-test-v1
